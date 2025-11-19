@@ -11,9 +11,10 @@ from django.contrib.auth import authenticate
 from .serializers import UserSerializer
 from rest_framework import viewsets
 from rest_framework.response import Response
-from .models import User  # assuming your User model
+from .models import User  
 from .serializers import UserSerializer, LoginSerializer
 from rest_framework.views import APIView
+from .serializers import SignupSerializer
 
 class UserAPIViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
@@ -60,11 +61,25 @@ class LoginView(APIView):
     serializer_class = LoginSerializer
     authentication_classes = []
 
-    def post(self, request, *args, kwargs):
+    def post(self, request, *args, **kwargs):
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
             return Response(
                 {"message": "Logged in successfully", **serializer.validated_data},
                 status=status.HTTP_200_OK,
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+class SignupView(APIView):
+    permission_classes = [AllowAny]
+    serializer_class = SignupSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(
+                {"message": "User registered successfully", "data": serializer.data},
+                status=status.HTTP_201_CREATED,
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

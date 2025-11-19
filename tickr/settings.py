@@ -10,20 +10,24 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+"""
+Django settings for tickr project.
+"""
 
 from pathlib import Path
-from decouple import config   # <-- ADD THIS LINE
+from decouple import config
 from datetime import timedelta 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+AUTH_USER_MODEL = 'user.User'
 
 # SECURITY
-SECRET_KEY = config('SECRET_KEY')          # <-- CHANGE
-DEBUG = config('DEBUG', default=True, cast=bool)   # <-- CHANGE
+SECRET_KEY = config('SECRET_KEY')
+DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["*"]
 
 
 # Application definition
@@ -37,12 +41,13 @@ INSTALLED_APPS = [
 
     'rest_framework',
     'rest_framework_simplejwt',
-    'corsheaders',                
+    'corsheaders',
     'user',
+    'management',
 ]
 
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware',   
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -76,21 +81,36 @@ WSGI_APPLICATION = 'tickr.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('DB_NAME'),         
-        'USER': config('DB_USER'),          
-        'PASSWORD': config('DB_PASSWORD'),  
-        'HOST': config('DB_HOST'),          
-        'PORT': config('DB_PORT'),          
+        'NAME': config('DB_NAME'),
+        'USER': config('DB_USER'),
+        'PASSWORD': config('DB_PASSWORD'),
+        'HOST': config('DB_HOST'),
+        'PORT': config('DB_PORT'),
     }
 }
 
 
-# CORS
-CORS_ALLOWED_ORIGINS = [               
+# CORS Configuration - UPDATED
+CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://192.168.56.1:3000",
 ]
 
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
+# Authentication
 AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",
 ]
@@ -108,8 +128,9 @@ SIMPLE_JWT = {
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": False,
     "BLACKLIST_AFTER_ROTATION": True,
+    "AUTH_HEADER_TYPES": ("Bearer",),
+    "AUTH_HEADER_NAME": "HTTP_AUTHORIZATION",
 }
-AUTH_USER_MODEL = "user.User"
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -137,8 +158,8 @@ USE_TZ = True
 
 # Static files
 STATIC_URL = 'static/'
-MEDIA_URL = '/media/'                  # <-- ADD
-MEDIA_ROOT = BASE_DIR / 'media'        # <-- ADD
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 
 
 # Default primary key field type
