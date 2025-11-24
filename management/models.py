@@ -1,4 +1,3 @@
-# management/models.py
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
@@ -75,6 +74,15 @@ class TimeEntry(models.Model):
     duration = models.DurationField(null=True, blank=True)
     is_running = models.BooleanField(default=False)
 
+    def save(self, *args, **kwargs):
+        if self.end_time and self.start_time:
+            self.duration = self.end_time - self.start_time
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.user.get_username()}: {self.description[:30]}"
+
+
 class TeamInvitation(models.Model):
     STATUS_CHOICES = [
         ('pending', 'Pending'),
@@ -97,19 +105,10 @@ class TeamInvitation(models.Model):
     accepted_at = models.DateTimeField(null=True, blank=True)
     
     class Meta:
-        unique_together = ('team', 'email')
         ordering = ['-created_at']
     
     def __str__(self):
         return f"Invitation to {self.email} for {self.team.name}"
     
     def is_valid(self):
-        from django.utils import timezone
         return self.status == 'pending' and self.expires_at > timezone.now()
-    def save(self, *args, **kwargs):
-        if self.end_time and self.start_time:
-            self.duration = self.end_time - self.start_time
-        super().save(*args, **kwargs)
-
-    def __str__(self):
-        return f"{self.user.get_username()}: {self.description[:30]}"

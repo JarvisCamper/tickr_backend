@@ -91,7 +91,11 @@ DATABASES = {
 
 
 # CORS Configuration - UPDATED
+# Get frontend URL from environment variable
+FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:3000')
+
 CORS_ALLOWED_ORIGINS = [
+    FRONTEND_URL,
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://192.168.56.1:3000",

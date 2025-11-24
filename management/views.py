@@ -6,8 +6,12 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.views import APIView
 from django.db.models import Sum
 from django.utils import timezone
+from django.http import Http404
 from datetime import timedelta
 from django.contrib.auth import get_user_model
+from django.urls import reverse
+from decouple import config
+import uuid
 
 from .models import Project, Team, TeamMember, TimeEntry, TeamInvitation
 from .serializers import (
@@ -20,6 +24,9 @@ from .serializers import (
 
 User = get_user_model()
 
+# Configuration
+FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:3000')
+
 
 # PROJECT VIEWSET
 class ProjectViewSet(viewsets.ModelViewSet):
@@ -28,8 +35,24 @@ class ProjectViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        """Return only projects created by the current user"""
-        return Project.objects.filter(creator=self.request.user)
+        """Return projects created by the user OR projects assigned to teams where user is a member/owner"""
+        # Projects created by the user
+        user_projects = Project.objects.filter(creator=self.request.user)
+        
+        # Teams where user is the owner
+        owned_teams = Team.objects.filter(owner=self.request.user)
+        
+        # Teams where user is a member
+        member_teams = Team.objects.filter(members__user=self.request.user)
+        
+        # All teams user has access to
+        user_teams = (owned_teams | member_teams).distinct()
+        
+        # Projects assigned to those teams
+        team_projects = Project.objects.filter(team__in=user_teams)
+        
+        # Combine both: user's own projects + team projects
+        return (user_projects | team_projects).distinct()
 
     def get_serializer_context(self):
         """Pass request context to serializer"""
@@ -49,8 +72,19 @@ class TeamViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        """Return only teams owned by the current user"""
-        return Team.objects.filter(owner=self.request.user)
+        """Return teams owned by the current user or teams they are a member of"""
+        # Teams owned by the user
+        owned_teams = Team.objects.filter(
+            owner=self.request.user
+        ).distinct()
+        
+        # Teams where user is a member
+        member_teams = Team.objects.filter(
+            members__user=self.request.user
+        ).distinct()
+        
+        # Combine both querysets - both must have same distinct state
+        return (owned_teams | member_teams).distinct()
 
     def get_serializer_context(self):
         """Pass request context to serializer"""
@@ -62,29 +96,237 @@ class TeamViewSet(viewsets.ModelViewSet):
         """Automatically set the owner to the current user"""
         serializer.save(owner=self.request.user)
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], url_path='invite')
     def invite(self, request, pk=None):
-        """Invite a user to the team"""
+        """Generate invitation link for the team"""
         team = self.get_object()
-        user_id = request.data.get('user_id')
+        
+        # Check if user is the owner
+        if team.owner != request.user:
+            return Response(
+                {"detail": "Only team owner can generate invitations"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        try:
+            # Create a generic invitation with unique placeholder email
+            unique_placeholder = f"invite-{uuid.uuid4().hex[:12]}@pending.local"
+            invitation = TeamInvitation.objects.create(
+                team=team,
+                email=unique_placeholder,
+                invited_by=request.user,
+                expires_at=timezone.now() + timedelta(days=7)
+            )
+            
+            # Build the invitation link - Point to Next.js frontend
+            invitation_link = f"{FRONTEND_URL}/teams/AcceptInvite/{invitation.token}"
+            
+            return Response({
+                "invite_link": invitation_link,
+                "invitation_link": invitation_link,
+                "token": str(invitation.token),
+                "expires_at": invitation.expires_at,
+                "team_name": team.name
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            # Log the error for debugging
+            import traceback
+            traceback.print_exc()
+            return Response(
+                {"detail": f"Error creating invitation: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
+    @action(detail=True, methods=['get'], url_path='members')
+    def list_members(self, request, pk=None):
+        """List all members of a team (including owner)"""
+        team = self.get_object()
+        members = TeamMember.objects.filter(team=team).select_related('user')
+        
+        # Build member list with role information
+        member_data = []
+        
+        # Always include the owner first
+        owner_in_members = False
+        for member in members:
+            if member.user == team.owner:
+                owner_in_members = True
+                member_data.append({
+                    'id': member.id,
+                    'user_id': team.owner.id,
+                    'username': team.owner.username,
+                    'email': team.owner.email,
+                    'role': 'owner',
+                    'joined_at': team.created_at  # Use team creation date for owner
+                })
+            else:
+                member_data.append({
+                    'id': member.id,
+                    'user_id': member.user.id,
+                    'username': member.user.username,
+                    'email': member.user.email,
+                    'role': 'member',
+                    'joined_at': member.joined_at
+                })
+        
+        # If owner is not in TeamMember table, add them manually
+        if not owner_in_members:
+            member_data.insert(0, {
+                'id': -1,  # Special ID for owner not in TeamMember table
+                'user_id': team.owner.id,
+                'username': team.owner.username,
+                'email': team.owner.email,
+                'role': 'owner',
+                'joined_at': team.created_at
+            })
+        
+        return Response(member_data)
+
+    @action(detail=True, methods=['delete'], url_path='remove-member')
+    def remove_member(self, request, pk=None):
+        """Remove a member from the team"""
+        team = self.get_object()
+        
+        # Check if requester is the owner
+        if team.owner != request.user:
+            return Response(
+                {'detail': 'Only team owner can remove members'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Get user_id from request body
+        user_id = request.data.get('user_id')
         if not user_id:
             return Response(
-                {"detail": "user_id is required"},
+                {'detail': 'user_id is required'},
                 status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Convert user_id to int for validation and database lookup
+            user_id = int(user_id)
+            
+            # Cannot remove the owner
+            if user_id == team.owner.id:
+                return Response(
+                    {'detail': 'Cannot remove the team owner'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            member_to_remove = TeamMember.objects.get(team=team, user_id=user_id)
+            member_to_remove.delete()
+            return Response(
+                {'detail': 'Member removed successfully'},
+                status=status.HTTP_200_OK
+            )
+        except (ValueError, TypeError):
+            return Response(
+                {'detail': 'Invalid user_id format'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except TeamMember.DoesNotExist:
+            return Response(
+                {'detail': 'User is not a member of this team'},
+                status=status.HTTP_404_NOT_FOUND
             )
 
+    @action(detail=True, methods=['post'], url_path='assign-project')
+    def assign_project(self, request, pk=None):
+        """Assign a project to this team"""
+        # Try to get the team - get_object() uses get_queryset() which filters by user access
         try:
-            member, created = TeamMember.objects.get_or_create(
-                team=team,
-                user_id=user_id
-            )
-            message = "Invited successfully" if created else "User is already a member"
-            return Response({"detail": message}, status=status.HTTP_200_OK)
-        except Exception as e:
+            team = self.get_object()
+        except Http404:
+            # Try to get more information about why it failed
+            try:
+                # Check if team exists at all
+                team_exists = Team.objects.filter(id=pk).exists()
+                if not team_exists:
+                    return Response(
+                        {"detail": f"Team with ID {pk} does not exist"},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+                # Team exists but user doesn't have access
+                return Response(
+                    {"detail": f"You don't have access to team {pk}. You must be the owner or a member."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            except (ValueError, TypeError):
+                return Response(
+                    {"detail": f"Invalid team ID: {pk}"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        # Check if user is the owner
+        if team.owner != request.user:
             return Response(
-                {"detail": str(e)},
+                {"detail": "Only team owner can assign projects"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        project_id = request.data.get('project_id')
+        if not project_id:
+            return Response(
+                {"detail": "project_id is required"},
                 status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Get the project and check ownership
+            project = Project.objects.get(id=project_id, creator=request.user)
+            
+            # Assign project to team
+            project.team = team
+            project.save()
+            
+            return Response({
+                "detail": "Project assigned successfully",
+                "project": ProjectSerializer(project, context={'request': request}).data
+            }, status=status.HTTP_200_OK)
+            
+        except Project.DoesNotExist:
+            return Response(
+                {"detail": "Project not found or you don't have permission"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+    @action(detail=True, methods=['post'], url_path='unassign-project')
+    def unassign_project(self, request, pk=None):
+        """Unassign a project from this team"""
+        team = self.get_object()
+        
+        # Check if user is the owner
+        if team.owner != request.user:
+            return Response(
+                {"detail": "Only team owner can unassign projects"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        project_id = request.data.get('project_id')
+        if not project_id:
+            return Response(
+                {"detail": "project_id is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Get the project
+            project = Project.objects.get(id=project_id, team=team, creator=request.user)
+            
+            # Unassign project from team
+            project.team = None
+            project.save()
+            
+            return Response({
+                "detail": "Project unassigned successfully",
+                "project": ProjectSerializer(project, context={'request': request}).data
+            }, status=status.HTTP_200_OK)
+            
+        except Project.DoesNotExist:
+            return Response(
+                {"detail": "Project not found or not assigned to this team"},
+                status=status.HTTP_404_NOT_FOUND
             )
 
 
@@ -257,27 +499,60 @@ def send_team_invitation(request, team_id):
             status=status.HTTP_404_NOT_FOUND
         )
     
+    user_id = request.data.get('user_id')
     email = request.data.get('email', '').strip()
     
-    # If no email provided, create a generic invitation link
-    if not email:
-        # Create invitation with a placeholder email
+    if user_id:
+        try:
+            invited_user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response(
+                {"detail": "User not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        email = invited_user.email
+        
+        if TeamMember.objects.filter(team=team, user=invited_user).exists():
+            return Response(
+                {"detail": "User is already a team member"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         invitation = TeamInvitation.objects.create(
             team=team,
-            email='pending@invite.link',  # Placeholder
+            email=email,
             invited_by=request.user,
             expires_at=timezone.now() + timedelta(days=7)
         )
         
-        invitation_link = f"http://localhost:3000/invitations/{invitation.token}"
+        invitation_link = f"{FRONTEND_URL}/teams/AcceptInvite/{invitation.token}"
+        
+        return Response({
+            "detail": "Invitation sent successfully",
+            "invitation_link": invitation_link,
+            "invitation_code": str(invitation.token),
+            "invitation": TeamInvitationSerializer(invitation).data
+        }, status=status.HTTP_201_CREATED)
+    
+    if not email:
+        unique_placeholder = f"invite-{uuid.uuid4().hex[:12]}@pending.local"
+        invitation = TeamInvitation.objects.create(
+            team=team,
+            email=unique_placeholder,
+            invited_by=request.user,
+            expires_at=timezone.now() + timedelta(days=7)
+        )
+        
+        invitation_link = f"{FRONTEND_URL}/teams/AcceptInvite/{invitation.token}"
         
         return Response({
             "detail": "Invitation link created successfully",
             "invitation_link": invitation_link,
+            "invitation_code": str(invitation.token),
             "invitation": TeamInvitationSerializer(invitation).data
         }, status=status.HTTP_201_CREATED)
     
-    # If email provided, validate user exists
     try:
         invited_user = User.objects.get(email=email)
     except User.DoesNotExist:
@@ -286,27 +561,12 @@ def send_team_invitation(request, team_id):
             status=status.HTTP_404_NOT_FOUND
         )
     
-    # Check if already a member
     if TeamMember.objects.filter(team=team, user=invited_user).exists():
         return Response(
             {"detail": "User is already a team member"},
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    # Check for existing pending invitation
-    existing = TeamInvitation.objects.filter(
-        team=team,
-        email=email,
-        status='pending'
-    ).first()
-    
-    if existing and existing.is_valid():
-        return Response(
-            {"detail": "Invitation already sent to this email"},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    
-    # Create new invitation
     invitation = TeamInvitation.objects.create(
         team=team,
         email=email,
@@ -314,11 +574,12 @@ def send_team_invitation(request, team_id):
         expires_at=timezone.now() + timedelta(days=7)
     )
     
-    invitation_link = f"http://localhost:3000/invitations/{invitation.token}"
+    invitation_link = f"{FRONTEND_URL}/teams/accept-invite/{invitation.token}"
     
     return Response({
         "detail": "Invitation sent successfully",
         "invitation_link": invitation_link,
+        "invitation_code": str(invitation.token),
         "invitation": TeamInvitationSerializer(invitation).data
     }, status=status.HTTP_201_CREATED)
 
@@ -362,10 +623,10 @@ def accept_invitation(request, token):
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    if request.user.email != invitation.email:
+    if TeamMember.objects.filter(team=invitation.team, user=request.user).exists():
         return Response(
-            {"detail": "This invitation was sent to a different email address"},
-            status=status.HTTP_403_FORBIDDEN
+            {"detail": "You are already a member of this team"},
+            status=status.HTTP_400_BAD_REQUEST
         )
     
     member, created = TeamMember.objects.get_or_create(
@@ -380,7 +641,7 @@ def accept_invitation(request, token):
     return Response({
         "detail": "Successfully joined the team!",
         "team": TeamSerializer(invitation.team, context={'request': request}).data
-    })
+    }, status=status.HTTP_200_OK)
 
 
 @api_view(['POST'])
@@ -393,12 +654,6 @@ def decline_invitation(request, token):
         return Response(
             {"detail": "Invitation not found"},
             status=status.HTTP_404_NOT_FOUND
-        )
-    
-    if request.user.email != invitation.email:
-        return Response(
-            {"detail": "This invitation was sent to a different email address"},
-            status=status.HTTP_403_FORBIDDEN
         )
     
     invitation.status = 'declined'

@@ -1,138 +1,109 @@
-# management/serializers.py
 from rest_framework import serializers
-from django.contrib.auth.models import User
 from .models import Project, Team, TeamMember, TimeEntry, TeamInvitation
+from django.contrib.auth import get_user_model
 
-
-
-class UserSimpleSerializer(serializers.Serializer):
-    id = serializers.IntegerField(read_only=True)
-    username = serializers.CharField(read_only=True)
-    email = serializers.EmailField(read_only=True)
+User = get_user_model()
 
 
 class ProjectSerializer(serializers.ModelSerializer):
-    creator = UserSimpleSerializer(read_only=True)
-    team_id = serializers.PrimaryKeyRelatedField(
-        queryset=Team.objects.none(),  # Will be set in __init__
-        source='team',
-        allow_null=True,
-        required=False
-    )
-
+    creator_username = serializers.CharField(source='creator.username', read_only=True)
+    team_name = serializers.CharField(source='team.name', read_only=True, allow_null=True)
+    team_id = serializers.IntegerField(source='team.id', read_only=True, allow_null=True)
+    
     class Meta:
         model = Project
-        fields = ['id', 'name', 'description', 'type', 'creator', 'team_id', 'created_at']
-        read_only_fields = ['id', 'creator', 'created_at']
+        fields = ['id', 'name', 'description', 'type', 'creator', 'creator_username', 'team', 'team_id', 'team_name', 'created_at']
+        read_only_fields = ['creator', 'created_at']
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        request = self.context.get('request')
-        if request and hasattr(request, 'user'):
-            # Only show teams owned by the current user
-            self.fields['team_id'].queryset = Team.objects.filter(owner=request.user)
 
-    def validate_name(self, value):
-        """Ensure project name is not empty"""
-        if not value or not value.strip():
-            raise serializers.ValidationError("Project name cannot be empty")
-        return value.strip()
+class TeamMemberSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source='user.username', read_only=True)
+    email = serializers.CharField(source='user.email', read_only=True)
+    user_id = serializers.IntegerField(source='user.id', read_only=True)
+    
+    class Meta:
+        model = TeamMember
+        fields = ['id', 'user_id', 'username', 'email', 'joined_at']
 
 
 class TeamSerializer(serializers.ModelSerializer):
-    owner = UserSimpleSerializer(read_only=True)
+    owner_username = serializers.CharField(source='owner.username', read_only=True)
+    owner = serializers.SerializerMethodField()
+    members = serializers.SerializerMethodField()
     member_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Team
-        fields = ['id', 'name', 'description', 'owner', 'member_count', 'created_at']
-        read_only_fields = ['id', 'owner', 'created_at']
+        fields = ['id', 'name', 'description', 'owner', 'owner_username', 'members', 'member_count', 'created_at']
+        read_only_fields = ['created_at']
+    
+    def get_owner(self, obj):
+        """Return full owner object with id, username, and email"""
+        return {
+            'id': obj.owner.id,
+            'username': obj.owner.username,
+            'email': obj.owner.email
+        }
 
     def get_member_count(self, obj):
         return obj.members.count()
-
-    def validate_name(self, value):
-        """Ensure team name is not empty"""
-        if not value or not value.strip():
-            raise serializers.ValidationError("Team name cannot be empty")
-        return value.strip()
-
-
-class TeamMemberSerializer(serializers.ModelSerializer):
-    user = UserSimpleSerializer(read_only=True)
-    team_id = serializers.PrimaryKeyRelatedField(
-        queryset=Team.objects.none(), 
-        source='team'
-    )
-
+    
+    def get_members(self, obj):
+        """Return all members including the owner, with role information"""
+        members = obj.members.all().select_related('user')
+        member_list = []
+        
+        # Track if owner is in TeamMember table
+        owner_in_members = False
+        
+        for member in members:
+            is_owner = member.user == obj.owner
+            if is_owner:
+                owner_in_members = True
+            member_list.append({
+                'id': member.id,
+                'user_id': member.user.id,
+                'username': member.user.username,
+                'email': member.user.email,
+                'role': 'owner' if is_owner else 'member',
+                'joined_at': member.joined_at if not is_owner else obj.created_at
+            })
+        
+        # If owner is not in TeamMember table, add them manually
+        if not owner_in_members:
+            member_list.insert(0, {
+                'id': -1,  # Special ID for owner not in TeamMember table
+                'user_id': obj.owner.id,
+                'username': obj.owner.username,
+                'email': obj.owner.email,
+                'role': 'owner',
+                'joined_at': obj.created_at
+            })
+        
+        return member_list
+class TimeEntrySerializer(serializers.ModelSerializer):
+    project_name = serializers.CharField(source='project.name', read_only=True, allow_null=True)
+    duration_str = serializers.SerializerMethodField()
+    
     class Meta:
-        model = TeamMember
-        fields = ['id', 'team_id', 'user', 'joined_at']
-        read_only_fields = ['id', 'user', 'joined_at']
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        request = self.context.get('request')
-        if request and hasattr(request, 'user'):
-            self.fields['team_id'].queryset = Team.objects.filter(owner=request.user)
+        model = TimeEntry
+        fields = ['id', 'user', 'project', 'project_name', 'description', 'start_time', 'end_time', 'duration', 'duration_str', 'is_running']
+        read_only_fields = ['user', 'duration']
+    
+    def get_duration_str(self, obj):
+        if obj.duration:
+            total_seconds = int(obj.duration.total_seconds())
+            hours, remainder = divmod(total_seconds, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        return "00:00:00"
 
 
 class TeamInvitationSerializer(serializers.ModelSerializer):
-    team = TeamSerializer(read_only=True)
-    invited_by = UserSimpleSerializer(read_only=True)
+    team_name = serializers.CharField(source='team.name', read_only=True)
+    invited_by_username = serializers.CharField(source='invited_by.username', read_only=True)
     
     class Meta:
         model = TeamInvitation
-        fields = ['id', 'team', 'email', 'invited_by', 'token', 'status', 
-                  'created_at', 'expires_at', 'accepted_at']
-        read_only_fields = ['id', 'token', 'created_at', 'expires_at']
-
-
-class TimeEntrySerializer(serializers.ModelSerializer):
-    user = UserSimpleSerializer(read_only=True)
-    project = ProjectSerializer(read_only=True)
-    project_id = serializers.PrimaryKeyRelatedField(
-        queryset=Project.objects.none(), 
-        source='project',
-        write_only=True,
-        allow_null=True,
-        required=False
-    )
-    duration_display = serializers.SerializerMethodField()
-    elapsed_time = serializers.SerializerMethodField()
-
-    class Meta:
-        model = TimeEntry
-        fields = [
-            'id', 'user', 'project', 'project_id', 'description',
-            'start_time', 'end_time', 'duration', 'duration_display',
-            'elapsed_time', 'is_running'
-        ]
-        read_only_fields = ['id', 'user', 'duration', 'start_time', 'end_time']
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        request = self.context.get('request')
-        if request and hasattr(request, 'user'):
-            
-            self.fields['project_id'].queryset = Project.objects.filter(creator=request.user)
-
-    def get_duration_display(self, obj):
-        """Format duration as HH:MM:SS"""
-        if obj.duration:
-            total_seconds = int(obj.duration.total_seconds())
-            h, r = divmod(total_seconds, 3600)
-            m, s = divmod(r, 60)
-            return f"{h:02d}:{m:02d}:{s:02d}"
-        return "00:00:00"
-
-    def get_elapsed_time(self, obj):
-        """Calculate elapsed time for running timers"""
-        if obj.is_running and obj.start_time:
-            from django.utils import timezone
-            elapsed = timezone.now() - obj.start_time
-            total_seconds = int(elapsed.total_seconds())
-            h, r = divmod(total_seconds, 3600)
-            m, s = divmod(r, 60)
-            return f"{h:02d}:{m:02d}:{s:02d}"
-        return None
+        fields = ['id', 'team', 'team_name', 'email', 'invited_by', 'invited_by_username', 'token', 'status', 'created_at', 'expires_at', 'accepted_at']
+        read_only_fields = ['token', 'created_at']
