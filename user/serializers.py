@@ -8,10 +8,11 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'})
+    avatar = serializers.ImageField(required=False, allow_null=True, use_url=True)
 
     class Meta:
         model = User
-        fields = ['id', 'email', 'username', 'password']
+        fields = ['id', 'email', 'username', 'password', 'avatar']
             #'id', 'email', 'username', 'first_name', 'last_name', 'phone', 'date_of_birth', 'password']
         extra_kwargs = {
             'password': {'write_only': True},
@@ -19,17 +20,23 @@ class UserSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         password = validated_data.pop('password')
+        avatar = validated_data.pop('avatar', None)
         user = User(**validated_data)
         user.set_password(password)  
+        if avatar:
+            user.avatar = avatar
         user.save()
         return user
 
     def update(self, instance, validated_data):
         password = validated_data.pop('password', None)
+        avatar = validated_data.pop('avatar', None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         if password:
             instance.set_password(password)
+        if avatar is not None:
+            instance.avatar = avatar
         instance.save()
         return instance
     

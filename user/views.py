@@ -15,6 +15,9 @@ from .models import User
 from .serializers import UserSerializer, LoginSerializer
 from rest_framework.views import APIView
 from .serializers import SignupSerializer
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import permission_classes
 
 class UserAPIViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
@@ -82,4 +85,23 @@ class SignupView(APIView):
                 {"message": "User registered successfully", "data": serializer.data},
                 status=status.HTTP_201_CREATED,
             )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class CurrentUserView(APIView):
+    """Endpoint for current authenticated user at /api/user/ supporting multipart PATCH uploads."""
+    parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        serializer = UserSerializer(request.user, context={"request": request})
+        # Return flat serializer data for compatibility with existing frontends
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def patch(self, request, *args, **kwargs):
+        serializer = UserSerializer(request.user, data=request.data, partial=True, context={"request": request})
+        if serializer.is_valid():
+            serializer.save()
+            # Return flat serializer data for compatibility with existing frontends
+            return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
