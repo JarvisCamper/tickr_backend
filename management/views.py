@@ -1,6 +1,9 @@
 # management/views.py
+import logging
 from rest_framework import viewsets, status
 from rest_framework.decorators import action, api_view, permission_classes
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.views import APIView
@@ -23,6 +26,9 @@ from .serializers import (
 )
 
 User = get_user_model()
+
+# Logger for debugging incoming requests
+logger = logging.getLogger(__name__)
 
 # Configuration
 FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:3000')
@@ -331,6 +337,7 @@ class TeamViewSet(viewsets.ModelViewSet):
 
 
 # TIME ENTRY VIEWSET
+@method_decorator(csrf_exempt, name='dispatch')
 class TimeEntryViewSet(viewsets.ModelViewSet):
     queryset = TimeEntry.objects.all()
     serializer_class = TimeEntrySerializer
@@ -363,7 +370,15 @@ class TimeEntryViewSet(viewsets.ModelViewSet):
         return Response({"detail": "No active timer"}, status=status.HTTP_404_NOT_FOUND)
 
     @action(detail=False, methods=['post'])
+    @csrf_exempt
     def start(self, request):
+        # Debug logging to inspect auth and cookies when requests fail
+        try:
+            auth_hdr = request.META.get('HTTP_AUTHORIZATION')
+            cookie_hdr = request.META.get('HTTP_COOKIE')
+            logger.debug("TimeEntry.start called - user=%s auth=%s cookies=%s data=%s", request.user, auth_hdr, cookie_hdr, request.data)
+        except Exception:
+            logger.exception("Failed reading request meta in TimeEntry.start")
         """Start a new timer (stop any running one first)"""
         # Stop any currently running timer
         TimeEntry.objects.filter(
@@ -379,12 +394,23 @@ class TimeEntryViewSet(viewsets.ModelViewSet):
         project = None
         if project_id:
             try:
-                project = Project.objects.get(id=project_id, creator=request.user)
+                project = Project.objects.get(id=project_id)
             except Project.DoesNotExist:
-                return Response(
-                    {"detail": "Project not found or you don't have permission to use it"},
-                    status=status.HTTP_403_FORBIDDEN
-                )
+                return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+
+            # Enforce permissions: allow if user created the project, is team owner/member, or is staff
+            if not (
+                project.creator == request.user or
+                request.user.is_staff
+            ):
+                # If project has a team assigned, allow team owner or team members to start
+                if project.team:
+                    if project.team.owner == request.user or TeamMember.objects.filter(team=project.team, user=request.user).exists():
+                        pass
+                    else:
+                        return Response({"detail": "You do not have permission to use this project"}, status=status.HTTP_403_FORBIDDEN)
+                else:
+                    return Response({"detail": "You do not have permission to use this project"}, status=status.HTTP_403_FORBIDDEN)
 
         # Create new entry
         entry = TimeEntry.objects.create(

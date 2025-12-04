@@ -15,7 +15,7 @@ Django settings for tickr project.
 """
 
 from pathlib import Path
-from decouple import config
+from decouple import config, Csv
 from datetime import timedelta 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -27,7 +27,8 @@ AUTH_USER_MODEL = 'user.User'
 SECRET_KEY = config('SECRET_KEY')
 DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = ["*"]
+# Load allowed hosts from environment, default keeps previous behaviour
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*', cast=Csv())
 
 
 # Application definition
@@ -94,13 +95,12 @@ DATABASES = {
 # Get frontend URL from environment variable
 FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:3000')
 
-CORS_ALLOWED_ORIGINS = [
-    FRONTEND_URL,
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://192.168.56.1:3000",
-]
-
+# CORS settings
+CORS_ALLOWED_ORIGINS = config(
+    'CORS_ALLOWED_ORIGINS',
+    default=FRONTEND_URL,
+    cast=Csv()
+)
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
     'accept',
@@ -113,6 +113,10 @@ CORS_ALLOW_HEADERS = [
     'x-csrftoken',
     'x-requested-with',
 ]
+
+# CSRF trusted origins (use schemes, e.g. https://your-frontend.vercel.app)
+# Provide as comma-separated list in env var `CSRF_TRUSTED_ORIGINS`.
+CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default=FRONTEND_URL, cast=Csv())
 
 # Authentication
 AUTHENTICATION_BACKENDS = [
