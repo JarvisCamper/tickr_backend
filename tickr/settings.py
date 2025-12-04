@@ -95,13 +95,25 @@ DATABASES = {
 # Get frontend URL from environment variable
 FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:3000')
 
+CORS_ALLOW_ALL_ORIGINS = config('CORS_ALLOW_ALL_ORIGINS', default=False, cast=bool)
+
 # CORS settings
+# By default allow the local frontend and allow configuring additional origins
+# via the `CORS_ALLOWED_ORIGINS` env var (comma-separated). In environments
+# where you want to allow any origin (not recommended for production), set
+# `CORS_ALLOW_ALL_ORIGINS=True` in env.
 CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
     default=FRONTEND_URL,
     cast=Csv()
 )
 CORS_ALLOW_CREDENTIALS = True
+
+# If enabled via env, allow all origins (useful for quick deploy/debug).
+if CORS_ALLOW_ALL_ORIGINS:
+    # django-cors-headers uses this setting when True to return
+    # Access-Control-Allow-Origin: *
+    CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_HEADERS = [
     'accept',
     'accept-encoding',
