@@ -31,7 +31,7 @@ User = get_user_model()
 logger = logging.getLogger(__name__)
 
 # Configuration
-FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:3000')
+FRONTEND_URL = config('FRONTEND_URL', default='https://tickr-frontend.vercel.app/')
 
 
 # PROJECT VIEWSET
