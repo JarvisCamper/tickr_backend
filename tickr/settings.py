@@ -4,6 +4,7 @@ Django settings for tickr project
 from pathlib import Path
 from decouple import config, Csv
 from datetime import timedelta
+from urllib.parse import urlparse
 
 # Build paths
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -29,6 +30,9 @@ INSTALLED_APPS = [
     'user',
     'management',
 ]
+
+# Use the custom user model defined in the `user` app
+AUTH_USER_MODEL = 'user.User'
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',        
@@ -79,17 +83,46 @@ DATABASES = {
 CORS_ALLOW_ALL_ORIGINS = config('CORS_ALLOW_ALL_ORIGINS', default=True, cast=bool)
 CORS_ALLOW_CREDENTIALS = True
 
-# Optional strict list (ignored when CORS_ALLOW_ALL_ORIGINS=True)
-CORS_ALLOWED_ORIGINS = config(
+# Optional strict lists (ignored when CORS_ALLOW_ALL_ORIGINS=True)
+# Normalize origins: django-cors-headers requires scheme://host[:port] with no path or trailing slash
+def _normalize_origins(raw_origins):
+    if not raw_origins:
+        return []
+    normalized = []
+    for origin in raw_origins:
+        if not origin:
+            continue
+        # Trim whitespace
+        origin = origin.strip()
+        # Parse the origin and rebuild scheme://netloc
+        parsed = urlparse(origin)
+        if parsed.scheme and parsed.netloc:
+            normalized.append(f"{parsed.scheme}://{parsed.netloc}")
+            continue
+        # If no scheme provided, try assuming https
+        if '://' not in origin:
+            attempt = urlparse('https://' + origin.rstrip('/'))
+            if attempt.scheme and attempt.netloc:
+                normalized.append(f"{attempt.scheme}://{attempt.netloc}")
+                continue
+        # As a last resort, strip any trailing slash
+        cleaned = origin.rstrip('/')
+        normalized.append(cleaned)
+    return normalized
+
+_raw_cors = config(
     'CORS_ALLOWED_ORIGINS',
     default='https://localhost:3000,https://tickr-frontend.vercel.app',
     cast=Csv()
 )
-CSRF_TRUSTED_ORIGINS = config(
+_raw_csrf = config(
     'CSRF_TRUSTED_ORIGINS',
     default='https://localhost:3000,https://tickr-frontend.vercel.app',
     cast=Csv()
 )
+
+CORS_ALLOWED_ORIGINS = _normalize_origins(_raw_cors)
+CSRF_TRUSTED_ORIGINS = _normalize_origins(_raw_csrf)
 
 # REST Framework & JWT
 REST_FRAMEWORK = {

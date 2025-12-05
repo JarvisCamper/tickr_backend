@@ -72,7 +72,7 @@ class LoginView(APIView):
         user = serializer.validated_data["user"]
 
         refresh = RefreshToken.for_user(user)
-        access = str(refresh.access_token)
+        access = refresh.access_token
 
         return Response(
             {
@@ -82,17 +82,6 @@ class LoginView(APIView):
                 "user": UserSerializer(user).data
             },
             status=status.HTTP_200_OK,
-        )
-    permission_classes = [AllowAny]
-    authentication_classes = []
-    serializer_class = LoginSerializer
-
-    def post(self, request, *args, **kwargs):
-        serializer = self.serializer_class(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        return Response(
-            {"message": "Logged in successfully", **serializer.validated_data},
-            status=status.HTTP_200_OK
         )
     
 class SignupView(APIView):
