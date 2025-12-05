@@ -1,7 +1,6 @@
 from django.shortcuts import render
 
 # Create your views here.
-
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -18,6 +17,7 @@ from .serializers import SignupSerializer
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import permission_classes
+from rest_framework_simplejwt.tokens import RefreshToken
 
 class UserAPIViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
@@ -61,6 +61,28 @@ class UserAPIViewSet(viewsets.ModelViewSet):
         }, status=status.HTTP_204_NO_CONTENT)
 
 class LoginView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    serializer_class = LoginSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = serializer.validated_data["user"]
+
+        refresh = RefreshToken.for_user(user)
+        access = str(refresh.access_token)
+
+        return Response(
+            {
+                "message": "Login successful",
+                "access": str(access),
+                "refresh": str(refresh),
+                "user": UserSerializer(user).data
+            },
+            status=status.HTTP_200_OK,
+        )
     permission_classes = [AllowAny]
     authentication_classes = []
     serializer_class = LoginSerializer
