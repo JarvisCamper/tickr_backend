@@ -7,6 +7,20 @@
   ],
   "routes": [
     {
+      "src": "/static/(.*)",
+      "headers": {
+        "cache-control": "public, max-age=31536000, immutable"
+      },
+      "dest": "/staticfiles_build/$1"
+    },
+    {
+      "src": "/media/(.*)",
+      "headers": {
+        "cache-control": "public, max-age=31536000"
+      },
+      "dest": "/media/$1"
+    },
+    {
       "src": "/(.*)",
       "dest": "tickr/wsgi.py"
     }

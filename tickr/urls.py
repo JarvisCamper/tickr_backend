@@ -29,6 +29,10 @@ urlpatterns = [
     path('api/login/', TokenObtainPairView.as_view(), name='api_login'),
     path('api/', include('user.urls')),
     path('api/', include('management.urls')),
-    path('api/auth/', include('rest_framework.urls')),  
-    
-] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    path('api/auth/', include('rest_framework.urls')),
+]
+
+# Serve media/static in dev (DEBUG=True); Vercel handles in prod
+if settings.DEBUG:
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
