@@ -10,10 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
-"""
-Django settings for tickr project.
-"""
-
+import os
 from pathlib import Path
 from decouple import config, Csv
 from datetime import timedelta 
@@ -109,6 +106,12 @@ CORS_ALLOWED_ORIGINS = config(
     default=FRONTEND_URLS,
     cast=Csv()
 )
+
+# Allow all Vercel preview deployments
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://tickr-frontend.*\.vercel\.app$",
+]
+
 CORS_ALLOW_CREDENTIALS = True
 
 # If enabled via env, allow all origins (useful for quick deploy/debug).
@@ -116,6 +119,7 @@ if CORS_ALLOW_ALL_ORIGINS:
     # django-cors-headers uses this setting when True to return
     # Access-Control-Allow-Origin: *
     CORS_ALLOW_ALL_ORIGINS = True
+
 CORS_ALLOW_HEADERS = [
     'accept',
     'accept-encoding',
@@ -178,8 +182,14 @@ USE_I18N = True
 USE_TZ = True
 
 
-# Static files
+# Static files configuration
 STATIC_URL = 'static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+# Disable collectstatic on Vercel
+if os.environ.get('VERCEL'):
+    STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
+
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
