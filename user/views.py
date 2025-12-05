@@ -61,17 +61,17 @@ class UserAPIViewSet(viewsets.ModelViewSet):
         }, status=status.HTTP_204_NO_CONTENT)
 
 class LoginView(APIView):
-    serializer_class = LoginSerializer
+    permission_classes = [AllowAny]
     authentication_classes = []
+    serializer_class = LoginSerializer
 
     def post(self, request, *args, **kwargs):
         serializer = self.serializer_class(data=request.data)
-        if serializer.is_valid():
-            return Response(
-                {"message": "Logged in successfully", **serializer.validated_data},
-                status=status.HTTP_200_OK,
-            )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer.is_valid(raise_exception=True)
+        return Response(
+            {"message": "Logged in successfully", **serializer.validated_data},
+            status=status.HTTP_200_OK
+        )
     
 class SignupView(APIView):
     permission_classes = [AllowAny]

@@ -41,38 +41,41 @@ class UserSerializer(serializers.ModelSerializer):
         return instance
     
 class LoginSerializer(serializers.Serializer):
-    email = serializers.CharField()
-    password = serializers.CharField(style={"input_type": "password"}, write_only=True)
+    email = serializers.CharField(required=False)
+    username = serializers.CharField(required=False)
+    password = serializers.CharField(write_only=True)
 
     def validate(self, data):
         email = data.get("email")
+        username = data.get("username")
         password = data.get("password")
 
+        if not email and not username:
+            raise AuthenticationFailed("Email or username is required")
+
         try:
-            user = User.objects.get(email=email)
+            # Try login by email
+            if email:
+                user = User.objects.get(email=email)
+            # Or login by username
+            else:
+                user = User.objects.get(username=username)
+
         except User.DoesNotExist:
-            raise serializers.ValidationError("The user does not exist.")
+            raise AuthenticationFailed("User not found")
 
-        if not user.is_active:
-            raise serializers.ValidationError(
-                "Account is inactive, please contact the administrator."
-            )
+        # Password check
+        if not user.check_password(password):
+            raise AuthenticationFailed("Invalid credentials")
 
-        user = authenticate(username=email, password=password)
-        if user is None:
-            raise AuthenticationFailed("Invalid credentials.")
-
-        # Update last login
-        user.last_login = now()
-        user.save(update_fields=["last_login"])
-
-        # Generate tokens
+        # Generate JWT tokens
         refresh = RefreshToken.for_user(user)
 
         return {
-            "refresh_token": str(refresh),
-            "access_token": str(refresh.access_token),
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
         }
+
 class SignupSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'})
     password2 = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'})

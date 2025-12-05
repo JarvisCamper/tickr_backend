@@ -1,19 +1,20 @@
-
 from django.urls import path
-from .views import *
 from rest_framework.routers import DefaultRouter
-from .views import UserAPIViewSet, LoginView, SignupView, CurrentUserView
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+
+from .views import UserAPIViewSet, LoginView, CurrentUserView
 
 router = DefaultRouter()
 router.register(r'users', UserAPIViewSet, basename='user')
+
 urlpatterns = [
-    path('login/', LoginView.as_view() , name='login'),
+    path('login/', LoginView.as_view(), name='login'),
     path('signup/', UserAPIViewSet.as_view({'post': 'create'}), name='signup'),
     path('user/', CurrentUserView.as_view(), name='current_user'),
- 
-    
+
+    # REQUIRED FOR FRONTEND
+    path('token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 ]
 
-
-# Include router-generated URLs
 urlpatterns += router.urls

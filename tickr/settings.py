@@ -31,7 +31,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware',        # ← MUST BE FIRST
+    'corsheaders.middleware.CorsMiddleware',        
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -70,7 +70,7 @@ DATABASES = {
         'HOST': config('DB_HOST'),
         'PORT': config('DB_PORT'),
         'OPTIONS': {
-            'sslmode': 'require',   # ← THIS FIXES THE DEPLOYMENT_NOT_FOUND ERROR
+            'sslmode': 'require',   
         },
     }
 }
