@@ -49,6 +49,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
+    'tickr.middleware.EnsureCORSHeadersMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -92,19 +93,20 @@ DATABASES = {
 
 
 # CORS Configuration - UPDATED
-# Get frontend URL from environment variable
-FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:3000')
+# Default frontend origins: local dev + Vercel frontend
+DEFAULT_FRONTEND_ORIGINS = 'http://localhost:3000,https://tickr-frontend.vercel.app'
+
+# Frontend origins can be overridden by the environment variable
+# `FRONTEND_URLS` (comma-separated). Keep the env var name plural to allow
+# multiple origins when needed.
+FRONTEND_URLS = config('FRONTEND_URLS', default=DEFAULT_FRONTEND_ORIGINS)
 
 CORS_ALLOW_ALL_ORIGINS = config('CORS_ALLOW_ALL_ORIGINS', default=False, cast=bool)
 
 # CORS settings
-# By default allow the local frontend and allow configuring additional origins
-# via the `CORS_ALLOWED_ORIGINS` env var (comma-separated). In environments
-# where you want to allow any origin (not recommended for production), set
-# `CORS_ALLOW_ALL_ORIGINS=True` in env.
 CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
-    default=FRONTEND_URL,
+    default=FRONTEND_URLS,
     cast=Csv()
 )
 CORS_ALLOW_CREDENTIALS = True
@@ -128,7 +130,7 @@ CORS_ALLOW_HEADERS = [
 
 # CSRF trusted origins (use schemes, e.g. https://your-frontend.vercel.app)
 # Provide as comma-separated list in env var `CSRF_TRUSTED_ORIGINS`.
-CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default=FRONTEND_URL, cast=Csv())
+CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default=FRONTEND_URLS, cast=Csv())
 
 # Authentication
 AUTHENTICATION_BACKENDS = [
