@@ -1,8 +1,36 @@
 from django.conf import settings
 from django.utils.deprecation import MiddlewareMixin
 import logging
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_allowed(origins):
+    """Return a cleaned list of allowed origins.
+
+    Accepts a string (comma-separated) or an iterable. Trims whitespace and
+    filters out empty values. Returns a list of strings.
+    """
+    if not origins:
+        return []
+    if isinstance(origins, str):
+        parts = [p.strip() for p in origins.split(",")]
+    else:
+        try:
+            parts = [str(p).strip() for p in list(origins)]
+        except Exception:
+            return []
+    return [p for p in parts if p]
+
+
+def _is_valid_origin(origin):
+    """Basic validation for an origin string (scheme + netloc)."""
+    try:
+        parsed = urlparse(origin)
+        return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+    except Exception:
+        return False
 
 
 class EnsureCORSHeadersMiddleware(MiddlewareMixin):
@@ -10,9 +38,9 @@ class EnsureCORSHeadersMiddleware(MiddlewareMixin):
 
     This middleware only sets headers when they are missing. It attempts to
     respect configured origins in `CORS_ALLOWED_ORIGINS` and the
-    `CORS_ALLOW_ALL_ORIGINS` flag. It's intended as a safety-net; the
-    preferred solution is to ensure `django-cors-headers` is configured and
-    active.
+    `CORS_ALLOW_ALL_ORIGINS` flag. It also sanitizes configured origins so
+    invalid environment values won't accidentally produce invalid header
+    values (for example a Python list repr).
     """
 
     def process_response(self, request, response):
@@ -33,11 +61,10 @@ class EnsureCORSHeadersMiddleware(MiddlewareMixin):
             )
             return response
 
-        # Determine allowed origins
+        # Determine allowed origins (normalize to list)
         try:
             allowed = getattr(settings, "CORS_ALLOWED_ORIGINS", []) or []
-            if isinstance(allowed, str):
-                allowed = [a.strip() for a in allowed.split(",") if a.strip()]
+            allowed = _normalize_allowed(allowed)
         except Exception:
             allowed = []
 
@@ -46,7 +73,8 @@ class EnsureCORSHeadersMiddleware(MiddlewareMixin):
             response["Access-Control-Allow-Origin"] = "*"
             logger.debug("Set Access-Control-Allow-Origin='*' for %s", request.path)
         else:
-            if origin in allowed:
+            # Only reflect the origin if it's explicitly allowed and looks valid
+            if origin in allowed and _is_valid_origin(origin):
                 response["Access-Control-Allow-Origin"] = origin
                 logger.debug("Reflected Origin %s for %s", origin, request.path)
             else:
@@ -59,13 +87,15 @@ class EnsureCORSHeadersMiddleware(MiddlewareMixin):
 
         # If credentials are allowed, reflect that (only for non-* origins)
         if getattr(settings, "CORS_ALLOW_CREDENTIALS", False):
-            if response.get("Access-Control-Allow-Origin") and response["Access-Control-Allow-Origin"] != "*":
+            aco = response.get("Access-Control-Allow-Origin")
+            if aco and aco != "*":
                 response["Access-Control-Allow-Credentials"] = "true"
 
         # For preflight requests, echo allowed methods and headers if missing
         if request.method == "OPTIONS":
             if not response.has_header("Access-Control-Allow-Methods"):
-                response["Access-Control-Allow-Methods"] = ", ".join(getattr(settings, "CORS_ALLOW_METHODS", ["GET", "POST", "OPTIONS", "PUT", "PATCH", "DELETE"]))
+                methods = getattr(settings, "CORS_ALLOW_METHODS", ["GET", "POST", "OPTIONS", "PUT", "PATCH", "DELETE"])
+                response["Access-Control-Allow-Methods"] = ", ".join(methods)
             if not response.has_header("Access-Control-Allow-Headers"):
                 headers = getattr(settings, "CORS_ALLOW_HEADERS", ["authorization", "content-type", "origin", "x-requested-with"])
                 response["Access-Control-Allow-Headers"] = ", ".join(headers)
