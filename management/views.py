@@ -353,27 +353,16 @@ class TimeEntryViewSet(viewsets.ModelViewSet):
         return Response({"detail": "No active timer"}, status=status.HTTP_404_NOT_FOUND)
 
     @action(detail=False, methods=['post'])
-    @csrf_exempt
     def start(self, request):
-        # Debug logging to inspect auth and cookies when requests fail
-        try:
-            auth_hdr = request.META.get('HTTP_AUTHORIZATION')
-            cookie_hdr = request.META.get('HTTP_COOKIE')
-            logger.debug("TimeEntry.start called - user=%s auth=%s cookies=%s data=%s", request.user, auth_hdr, cookie_hdr, request.data)
-        except Exception:
-            logger.exception("Failed reading request meta in TimeEntry.start")
         """Start a new timer (stop any running one first)"""
-        # Stop any currently running timer
         TimeEntry.objects.filter(
             user=request.user,
             is_running=True
         ).update(end_time=timezone.now(), is_running=False)
 
-        # Get data from request
         project_id = request.data.get('project_id')
         description = request.data.get('description', '')
 
-        # Validate project exists and belongs to user
         project = None
         if project_id:
             try:
@@ -381,21 +370,13 @@ class TimeEntryViewSet(viewsets.ModelViewSet):
             except Project.DoesNotExist:
                 return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
 
-            # Enforce permissions: allow if user created the project, is team owner/member, or is staff
-            if not (
-                project.creator == request.user or
-                request.user.is_staff
-            ):
-                # If project has a team assigned, allow team owner or team members to start
+            if not (project.creator == request.user or request.user.is_staff):
                 if project.team:
-                    if project.team.owner == request.user or TeamMember.objects.filter(team=project.team, user=request.user).exists():
-                        pass
-                    else:
+                    if not (project.team.owner == request.user or TeamMember.objects.filter(team=project.team, user=request.user).exists()):
                         return Response({"detail": "You do not have permission to use this project"}, status=status.HTTP_403_FORBIDDEN)
                 else:
                     return Response({"detail": "You do not have permission to use this project"}, status=status.HTTP_403_FORBIDDEN)
 
-        # Create new entry
         entry = TimeEntry.objects.create(
             user=request.user,
             project=project,
@@ -469,28 +450,15 @@ class ReportView(APIView):
 
 
 # USER INFO ENDPOINT
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def current_user(request):
-    """Return the authenticated user's basic info"""
-    user = request.user
-    return Response({
-        "id": user.id,
-        "email": user.email,
-        "username": user.username,
-    })
-
-
 class CurrentUserView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         """Return the authenticated user's basic info"""
-        user = request.user
         return Response({
-            "id": user.id,
-            "email": user.email,
-            "username": user.username,
+            "id": request.user.id,
+            "email": request.user.email,
+            "username": request.user.username,
         })
 
 
@@ -520,14 +488,13 @@ def send_team_invitation(request, team_id):
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        email = invited_user.email
-        
         if TeamMember.objects.filter(team=team, user=invited_user).exists():
             return Response(
                 {"detail": "User is already a team member"},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        email = invited_user.email
         invitation = TeamInvitation.objects.create(
             team=team,
             email=email,
@@ -545,7 +512,7 @@ def send_team_invitation(request, team_id):
         }, status=status.HTTP_201_CREATED)
     
     if not email:
-        unique_placeholder = f"invite-{uuid.uuid4().hex[:12]}@pending.local"
+        unique_placeholder = f"invite-{uuid4().hex[:12]}@pending.local"
         invitation = TeamInvitation.objects.create(
             team=team,
             email=unique_placeholder,
@@ -583,7 +550,7 @@ def send_team_invitation(request, team_id):
         expires_at=timezone.now() + timedelta(days=7)
     )
     
-    invitation_link = f"{FRONTEND_URL}/teams/accept-invite/{invitation.token}"
+    invitation_link = f"{FRONTEND_URL}/teams/AcceptInvite/{invitation.token}"
     
     return Response({
         "detail": "Invitation sent successfully",
