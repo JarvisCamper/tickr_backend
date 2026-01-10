@@ -3,7 +3,6 @@ from rest_framework import serializers
 from .models import User
 from django.contrib.auth import authenticate
 from rest_framework.exceptions import AuthenticationFailed
-from django.utils.timezone import now
 from rest_framework_simplejwt.tokens import RefreshToken
 
 class UserSerializer(serializers.ModelSerializer):
@@ -13,7 +12,6 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'email', 'username', 'password', 'avatar']
-            #'id', 'email', 'username', 'first_name', 'last_name', 'phone', 'date_of_birth', 'password']
         extra_kwargs = {
             'password': {'write_only': True},
         }

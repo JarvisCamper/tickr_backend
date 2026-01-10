@@ -1,36 +1,30 @@
 # management/views.py
 import logging
-from rest_framework import viewsets, status
-from rest_framework.decorators import action, api_view, permission_classes
-from django.utils.decorators import method_decorator
-from django.views.decorators.csrf import csrf_exempt
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework.views import APIView
-from django.db.models import Sum
-from django.utils import timezone
-from django.http import Http404
 from datetime import timedelta
+from uuid import uuid4
+
 from django.contrib.auth import get_user_model
-from django.urls import reverse
+from django.db.models import Sum
+from django.http import Http404
+from django.utils import timezone
+from rest_framework import status, viewsets
+from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
 from decouple import config
-import uuid
 
 from .models import Project, Team, TeamMember, TimeEntry, TeamInvitation
 from .serializers import (
     ProjectSerializer,
     TeamSerializer,
-    TeamMemberSerializer,
     TimeEntrySerializer,
     TeamInvitationSerializer
 )
 
 User = get_user_model()
 
-# Logger for debugging incoming requests
 logger = logging.getLogger(__name__)
-
-# Configuration
 FRONTEND_URL = config('FRONTEND_URL', default='https://tickr-frontend.vercel.app/')
 
 
@@ -107,7 +101,6 @@ class TeamViewSet(viewsets.ModelViewSet):
         """Generate invitation link for the team"""
         team = self.get_object()
         
-        # Check if user is the owner
         if team.owner != request.user:
             return Response(
                 {"detail": "Only team owner can generate invitations"},
@@ -115,8 +108,7 @@ class TeamViewSet(viewsets.ModelViewSet):
             )
         
         try:
-            # Create a generic invitation with unique placeholder email
-            unique_placeholder = f"invite-{uuid.uuid4().hex[:12]}@pending.local"
+            unique_placeholder = f"invite-{uuid4().hex[:12]}@pending.local"
             invitation = TeamInvitation.objects.create(
                 team=team,
                 email=unique_placeholder,
@@ -124,21 +116,17 @@ class TeamViewSet(viewsets.ModelViewSet):
                 expires_at=timezone.now() + timedelta(days=7)
             )
             
-            # Build the invitation link - Point to Next.js frontend
             invitation_link = f"{FRONTEND_URL}/teams/AcceptInvite/{invitation.token}"
             
             return Response({
                 "invite_link": invitation_link,
-                "invitation_link": invitation_link,
                 "token": str(invitation.token),
                 "expires_at": invitation.expires_at,
                 "team_name": team.name
             }, status=status.HTTP_201_CREATED)
             
         except Exception as e:
-            # Log the error for debugging
-            import traceback
-            traceback.print_exc()
+            logger.exception("Error creating invitation")
             return Response(
                 {"detail": f"Error creating invitation: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -194,14 +182,12 @@ class TeamViewSet(viewsets.ModelViewSet):
         """Remove a member from the team"""
         team = self.get_object()
         
-        # Check if requester is the owner
         if team.owner != request.user:
             return Response(
                 {'detail': 'Only team owner can remove members'},
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        # Get user_id from request body
         user_id = request.data.get('user_id')
         if not user_id:
             return Response(
@@ -210,10 +196,8 @@ class TeamViewSet(viewsets.ModelViewSet):
             )
         
         try:
-            # Convert user_id to int for validation and database lookup
             user_id = int(user_id)
             
-            # Cannot remove the owner
             if user_id == team.owner.id:
                 return Response(
                     {'detail': 'Cannot remove the team owner'},
@@ -337,7 +321,6 @@ class TeamViewSet(viewsets.ModelViewSet):
 
 
 # TIME ENTRY VIEWSET
-@method_decorator(csrf_exempt, name='dispatch')
 class TimeEntryViewSet(viewsets.ModelViewSet):
     queryset = TimeEntry.objects.all()
     serializer_class = TimeEntrySerializer
