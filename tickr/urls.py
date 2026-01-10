@@ -30,6 +30,7 @@ urlpatterns = [
     path('api/', include('user.urls')),
     path('api/', include('management.urls')),
     path('api/auth/', include('rest_framework.urls')),
+    path('admin/api/', include('admin_site.urls')),
 ]
 
 # Serve media/static in dev (DEBUG=True); Vercel handles in prod

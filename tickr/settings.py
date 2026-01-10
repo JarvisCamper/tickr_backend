@@ -29,6 +29,7 @@ INSTALLED_APPS = [
 
     'user',
     'management',
+    'admin_site',
 ]
 
 # Use the custom user model defined in the `user` app

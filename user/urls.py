@@ -2,14 +2,13 @@ from django.urls import path
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from .views import UserAPIViewSet, LoginView, CurrentUserView
+from .views import LoginView, SignupView, CurrentUserView
 
 router = DefaultRouter()
-router.register(r'users', UserAPIViewSet, basename='user')
 
 urlpatterns = [
     path('login/', LoginView.as_view(), name='login'),
-    path('signup/', UserAPIViewSet.as_view({'post': 'create'}), name='signup'),
+    path('signup/', SignupView.as_view(), name='signup'),
     path('user/', CurrentUserView.as_view(), name='current_user'),
 
     # REQUIRED FOR FRONTEND

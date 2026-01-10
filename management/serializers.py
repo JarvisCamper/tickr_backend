@@ -95,4 +95,12 @@ class TimeEntrySerializer(serializers.ModelSerializer):
             return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
         return "00:00:00"
 
+
+class TeamInvitationSerializer(serializers.ModelSerializer):
+    team_name = serializers.CharField(source='team.name', read_only=True)
+    invited_by_username = serializers.CharField(source='invited_by.username', read_only=True)
+    
+    class Meta:
+        model = TeamInvitation
+        fields = ['id', 'team', 'team_name', 'email', 'invited_by', 'invited_by_username', 'token', 'status', 'created_at', 'expires_at', 'accepted_at']
         read_only_fields = ['token', 'created_at']

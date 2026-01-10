@@ -36,23 +36,15 @@ class ProjectViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """Return projects created by the user OR projects assigned to teams where user is a member/owner"""
-        # Projects created by the user
-        user_projects = Project.objects.filter(creator=self.request.user)
+        from django.db.models import Q
         
-        # Teams where user is the owner
-        owned_teams = Team.objects.filter(owner=self.request.user)
-        
-        # Teams where user is a member
-        member_teams = Team.objects.filter(members__user=self.request.user)
-        
-        # All teams user has access to
-        user_teams = (owned_teams | member_teams).distinct()
-        
-        # Projects assigned to those teams
-        team_projects = Project.objects.filter(team__in=user_teams)
-        
-        # Combine both: user's own projects + team projects
-        return (user_projects | team_projects).distinct()
+        # Optimize with select_related to avoid N+1 queries
+        # Get all projects in a single query with proper joins
+        return Project.objects.select_related('creator', 'team').filter(
+            Q(creator=self.request.user) |  # User's own projects
+            Q(team__owner=self.request.user) |  # Projects from teams user owns
+            Q(team__members__user=self.request.user)  # Projects from teams user is member of
+        ).distinct()
 
     def get_serializer_context(self):
         """Pass request context to serializer"""
@@ -73,18 +65,14 @@ class TeamViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """Return teams owned by the current user or teams they are a member of"""
-        # Teams owned by the user
-        owned_teams = Team.objects.filter(
-            owner=self.request.user
-        ).distinct()
+        from django.db.models import Q
         
-        # Teams where user is a member
-        member_teams = Team.objects.filter(
-            members__user=self.request.user
+        # Optimize with single query and prefetch members
+        return Team.objects.select_related('owner').prefetch_related(
+            'members__user'
+        ).filter(
+            Q(owner=self.request.user) | Q(members__user=self.request.user)
         ).distinct()
-        
-        # Combine both querysets - both must have same distinct state
-        return (owned_teams | member_teams).distinct()
 
     def get_serializer_context(self):
         """Pass request context to serializer"""
@@ -135,8 +123,8 @@ class TeamViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'], url_path='members')
     def list_members(self, request, pk=None):
         """List all members of a team (including owner)"""
-        team = self.get_object()
-        members = TeamMember.objects.filter(team=team).select_related('user')
+        team = Team.objects.select_related('owner').prefetch_related('members__user').get(pk=pk)
+        members = team.members.all()
         
         # Build member list with role information
         member_data = []
@@ -328,7 +316,7 @@ class TimeEntryViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """Return only current user's entries"""
-        return TimeEntry.objects.filter(user=self.request.user)
+        return TimeEntry.objects.select_related('project', 'user').filter(user=self.request.user)
 
     def get_serializer_context(self):
         """Pass request context to serializer"""
@@ -343,7 +331,7 @@ class TimeEntryViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def active(self, request):
         """Get the currently running timer if any"""
-        entry = TimeEntry.objects.filter(
+        entry = TimeEntry.objects.select_related('project').filter(
             user=request.user,
             is_running=True
         ).first()
@@ -392,7 +380,7 @@ class TimeEntryViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def stop(self, request):
         """Stop the currently running timer"""
-        entry = TimeEntry.objects.filter(
+        entry = TimeEntry.objects.select_related('project').filter(
             user=request.user,
             is_running=True
         ).first()
@@ -416,7 +404,7 @@ class ReportView(APIView):
 
     def get(self, request):
         """Generate time tracking reports for the current user"""
-        entries = TimeEntry.objects.filter(user=request.user, end_time__isnull=False)
+        entries = TimeEntry.objects.select_related('project').filter(user=request.user, end_time__isnull=False)
 
         # Total time
         total_duration = entries.aggregate(total=Sum('duration'))['total']
@@ -642,10 +630,10 @@ def decline_invitation(request, token):
 @permission_classes([IsAuthenticated])
 def my_invitations(request):
     """Get all pending invitations for the logged-in user"""
-    invitations = TeamInvitation.objects.filter(
+    invitations = TeamInvitation.objects.select_related('team__owner', 'invited_by').filter(
         email=request.user.email,
         status='pending'
-    ).select_related('team', 'invited_by')
+    )
     
     valid_invitations = [inv for inv in invitations if inv.is_valid()]
     

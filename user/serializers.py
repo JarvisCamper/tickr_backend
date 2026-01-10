@@ -11,9 +11,11 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'email', 'username', 'password', 'avatar']
+        fields = ['id', 'email', 'username', 'password', 'avatar', 'is_staff', 'is_superuser']
         extra_kwargs = {
             'password': {'write_only': True},
+            'is_staff': {'read_only': True},
+            'is_superuser': {'read_only': True},
         }
 
     def create(self, validated_data):
@@ -66,12 +68,9 @@ class LoginSerializer(serializers.Serializer):
         if not user.check_password(password):
             raise AuthenticationFailed("Invalid credentials")
 
-        # Generate JWT tokens
-        refresh = RefreshToken.for_user(user)
-
+        # Return user object so the view can access it
         return {
-            "access": str(refresh.access_token),
-            "refresh": str(refresh),
+            "user": user,
         }
 
 class SignupSerializer(serializers.ModelSerializer):
