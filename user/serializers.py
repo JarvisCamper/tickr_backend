@@ -8,15 +8,23 @@ from rest_framework_simplejwt.tokens import RefreshToken
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'})
     avatar = serializers.ImageField(required=False, allow_null=True, use_url=True)
+    is_admin = serializers.SerializerMethodField()
+    role = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['id', 'email', 'username', 'password', 'avatar', 'is_staff', 'is_superuser']
+        fields = ['id', 'email', 'username', 'password', 'avatar', 'is_staff', 'is_superuser', 'is_admin', 'role']
         extra_kwargs = {
             'password': {'write_only': True},
             'is_staff': {'read_only': True},
             'is_superuser': {'read_only': True},
         }
+
+    def get_is_admin(self, obj):
+        return bool(getattr(obj, 'is_staff', False) or getattr(obj, 'is_superuser', False))
+
+    def get_role(self, obj):
+        return 'admin' if self.get_is_admin(obj) else 'member'
 
     def create(self, validated_data):
         password = validated_data.pop('password')

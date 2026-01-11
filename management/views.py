@@ -337,8 +337,11 @@ class TimeEntryViewSet(viewsets.ModelViewSet):
         ).first()
 
         if entry:
-            return Response(TimeEntrySerializer(entry, context={'request': request}).data)
-        return Response({"detail": "No active timer"}, status=status.HTTP_404_NOT_FOUND)
+            data = TimeEntrySerializer(entry, context={'request': request}).data
+            data['is_running'] = True
+            return Response(data, status=status.HTTP_200_OK)
+        # Return a 200 with a stable shape so the frontend doesn't treat it as an error
+        return Response({"is_running": False}, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'])
     def start(self, request):
@@ -442,12 +445,24 @@ class CurrentUserView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        """Return the authenticated user's basic info"""
-        return Response({
-            "id": request.user.id,
-            "email": request.user.email,
-            "username": request.user.username,
-        })
+        """Return the authenticated user's info including admin flags"""
+        try:
+            from user.serializers import UserSerializer
+            serializer = UserSerializer(request.user, context={'request': request})
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Exception:
+            # Fallback if serializer import fails
+            is_admin = bool(getattr(request.user, 'is_staff', False) or getattr(request.user, 'is_superuser', False))
+            role = 'admin' if is_admin else 'member'
+            return Response({
+                "id": request.user.id,
+                "email": request.user.email,
+                "username": request.user.username,
+                "is_staff": getattr(request.user, 'is_staff', False),
+                "is_superuser": getattr(request.user, 'is_superuser', False),
+                "is_admin": is_admin,
+                "role": role,
+            }, status=status.HTTP_200_OK)
 
 
 # INVITATION ENDPOINTS

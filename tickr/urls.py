@@ -25,8 +25,6 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
-    # Provide legacy `/api/login/` route for frontends expecting this endpoint
-    path('api/login/', TokenObtainPairView.as_view(), name='api_login'),
     path('api/', include('user.urls')),
     path('api/', include('management.urls')),
     path('api/auth/', include('rest_framework.urls')),
