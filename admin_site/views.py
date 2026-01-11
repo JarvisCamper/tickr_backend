@@ -21,6 +21,7 @@ from .serializers import (
 )
 from .permissions import IsAdminUser, IsSuperAdmin
 from .utils import log_admin_action, get_client_ip
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
 
 class StandardResultsSetPagination(PageNumberPagination):
@@ -35,6 +36,7 @@ class AdminUserViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing users from admin panel
     """
+    authentication_classes = [JWTAuthentication]
     permission_classes = [IsAdminUser]
     pagination_class = StandardResultsSetPagination
     
@@ -43,7 +45,7 @@ class AdminUserViewSet(viewsets.ModelViewSet):
             total_time_entries=Count('time_entries'),
             teams_count=Count('team_memberships', distinct=True),
             projects_count=Count('created_projects', distinct=True)
-        ).order_by('-created_at')
+        ).order_by('-id')
         
         # Filters
         status_filter = self.request.query_params.get('status', None)
@@ -152,6 +154,7 @@ class AdminTeamViewSet(viewsets.ReadOnlyModelViewSet):
     """
     ViewSet for viewing teams from admin panel
     """
+    authentication_classes = [JWTAuthentication]
     permission_classes = [IsAdminUser]
     pagination_class = StandardResultsSetPagination
     
@@ -183,6 +186,7 @@ class AdminProjectViewSet(viewsets.ReadOnlyModelViewSet):
     """
     ViewSet for viewing projects from admin panel
     """
+    authentication_classes = [JWTAuthentication]
     permission_classes = [IsAdminUser]
     pagination_class = StandardResultsSetPagination
     serializer_class = AdminProjectListSerializer
@@ -214,23 +218,36 @@ class AdminAnalyticsViewSet(viewsets.ViewSet):
     """
     ViewSet for admin analytics and statistics
     """
+    authentication_classes = [JWTAuthentication]
     permission_classes = [IsAdminUser]
     
     @action(detail=False, methods=['get'])
     def overview(self, request):
         """Get overview statistics for admin dashboard"""
         now = timezone.now()
-        month_ago = now - timedelta(days=30)
+        week_ago = now - timedelta(days=7)
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        # Calculate total time tracked (DurationField returns timedelta)
+        total_duration = TimeEntry.objects.aggregate(total=Sum('duration'))['total']
+        if total_duration:
+            total_seconds = int(total_duration.total_seconds())
+            hours = total_seconds // 3600
+            minutes = (total_seconds % 3600) // 60
+            seconds = total_seconds % 60
+            total_time_tracked = f"{hours}:{minutes:02d}:{seconds:02d}"
+        else:
+            total_time_tracked = "0:00:00"
         
         data = {
             'total_users': User.objects.count(),
-            'active_users': User.objects.filter(is_active=True).count(),
             'total_teams': Team.objects.count(),
             'total_projects': Project.objects.count(),
-            'total_time_entries': TimeEntry.objects.count(),
-            'new_users_this_month': User.objects.filter(created_at__gte=month_ago).count(),
-            'new_teams_this_month': Team.objects.filter(created_at__gte=month_ago).count(),
-            'new_projects_this_month': Project.objects.filter(created_at__gte=month_ago).count(),
+            'total_time_tracked': total_time_tracked,
+            'active_users_today': User.objects.filter(
+                time_entries__start_time__gte=today_start
+            ).distinct().count(),
+            'new_users_this_week': User.objects.filter(created_at__gte=week_ago).count(),
         }
         
         serializer = AdminAnalyticsOverviewSerializer(data)
@@ -302,6 +319,7 @@ class AdminActivityLogViewSet(viewsets.ReadOnlyModelViewSet):
     """
     ViewSet for viewing activity logs
     """
+    authentication_classes = [JWTAuthentication]
     permission_classes = [IsAdminUser]
     serializer_class = ActivityLogSerializer
     pagination_class = StandardResultsSetPagination
@@ -327,8 +345,7 @@ class AdminActivityLogViewSet(viewsets.ReadOnlyModelViewSet):
 class AdminSettingsViewSet(viewsets.ViewSet):
     """
     ViewSet for managing admin settings
-    """
-    permission_classes = [IsSuperAdmin]
+    """    authentication_classes = [JWTAuthentication]    permission_classes = [IsSuperAdmin]
     
     def list(self, request):
         """Get all admin settings"""

@@ -23,10 +23,10 @@ class AdminUserListSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'email', 'username', 'avatar', 'is_active', 
-            'is_staff', 'is_superuser', 'created_at', 'last_login',
+            'is_staff', 'is_superuser', 'last_login',
             'total_time_entries', 'teams_count', 'projects_count'
         ]
-        read_only_fields = ['id', 'created_at', 'last_login']
+        read_only_fields = ['id', 'last_login']
 
 
 class AdminUserDetailSerializer(serializers.ModelSerializer):
@@ -41,11 +41,11 @@ class AdminUserDetailSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'email', 'username', 'avatar', 'is_active', 
-            'is_staff', 'is_superuser', 'created_at', 'last_login',
+            'is_staff', 'is_superuser', 'last_login',
             'total_time_entries', 'total_time_tracked',
             'teams', 'owned_teams', 'recent_projects'
         ]
-        read_only_fields = ['id', 'created_at', 'last_login']
+        read_only_fields = ['id', 'last_login']
     
     def get_total_time_entries(self, obj):
         return obj.time_entries.count()
@@ -164,13 +164,11 @@ class AdminProjectListSerializer(serializers.ModelSerializer):
 class AdminAnalyticsOverviewSerializer(serializers.Serializer):
     """Overview statistics for dashboard"""
     total_users = serializers.IntegerField()
-    active_users = serializers.IntegerField()
     total_teams = serializers.IntegerField()
     total_projects = serializers.IntegerField()
-    total_time_entries = serializers.IntegerField()
-    new_users_this_month = serializers.IntegerField()
-    new_teams_this_month = serializers.IntegerField()
-    new_projects_this_month = serializers.IntegerField()
+    total_time_tracked = serializers.CharField()
+    active_users_today = serializers.IntegerField()
+    new_users_this_week = serializers.IntegerField()
 
 
 class AdminUserGrowthSerializer(serializers.Serializer):
