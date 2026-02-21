@@ -4,7 +4,7 @@ from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.test import APITestCase
 
 from user.models import User
-from user.serializers import LoginSerializer
+from user.serializers import LoginSerializer, SignupSerializer
 
 
 class LoginSerializerTests(APITestCase):
@@ -57,3 +57,27 @@ class LoginEndpointTests(APITestCase):
 
 		self.assertIn(resp.status_code, {status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN})
 		self.assertIn("detail", resp.data)
+
+
+class SignupSerializerTests(APITestCase):
+	def test_signup_serializer_accepts_password2(self):
+		serializer = SignupSerializer(
+			data={
+				"email": "p2@example.com",
+				"username": "p2",
+				"password": "secret123",
+				"password2": "secret123",
+			}
+		)
+		self.assertTrue(serializer.is_valid(), serializer.errors)
+
+	def test_signup_serializer_accepts_confirm_password_alias(self):
+		serializer = SignupSerializer(
+			data={
+				"email": "cp@example.com",
+				"username": "cp",
+				"password": "secret123",
+				"confirmPassword": "secret123",
+			}
+		)
+		self.assertTrue(serializer.is_valid(), serializer.errors)
