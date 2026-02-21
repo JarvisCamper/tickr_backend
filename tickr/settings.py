@@ -65,20 +65,32 @@ TEMPLATES = [
     },
 ]
 
-# Database – Aiven + Vercel needs SSL
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('DB_NAME'),
-        'USER': config('DB_USER'),
-        'PASSWORD': config('DB_PASSWORD'),
-        'HOST': config('DB_HOST'),
-        'PORT': config('DB_PORT'),
-        'OPTIONS': {
-            'sslmode': 'require',   
-        },
+# Database
+# Default is Postgres (Aiven/Vercel w/ SSL). For local development you can set:
+#   USE_SQLITE=True
+USE_SQLITE = config('USE_SQLITE', default=False, cast=bool)
+
+if USE_SQLITE:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': config('DB_NAME'),
+            'USER': config('DB_USER'),
+            'PASSWORD': config('DB_PASSWORD'),
+            'HOST': config('DB_HOST'),
+            'PORT': config('DB_PORT'),
+            'OPTIONS': {
+                'sslmode': 'require',
+            },
+        }
+    }
 
 # CORS – ALLOW EVERYTHING FOR NOW (you can tighten later)
 CORS_ALLOW_ALL_ORIGINS = config('CORS_ALLOW_ALL_ORIGINS', default=True, cast=bool)

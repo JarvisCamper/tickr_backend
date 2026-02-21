@@ -22,7 +22,7 @@ from django.conf.urls.static import static
 from rest_framework_simplejwt.views import TokenRefreshView, TokenObtainPairView
 
 urlpatterns = [
-    path('admin/api/', include('admin_site.urls')),  # Must come BEFORE 'admin/'
+    path('admin/api/', include('admin_site.urls')), 
     path('admin/', admin.site.urls),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
