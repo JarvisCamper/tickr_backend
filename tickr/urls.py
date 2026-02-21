@@ -29,6 +29,11 @@ urlpatterns = [
     path('api/', include('user.urls')),
     path('api/', include('management.urls')),
     path('api/auth/', include('rest_framework.urls')),
+    # Backward-compatible aliases for legacy frontend URLs (remove after frontend migration).
+    path('api/api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh_legacy'),
+    path('api/api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair_legacy'),
+    path('api/api/', include('user.urls')),
+    path('api/api/', include('management.urls')),
 ]
 
 # Serve media/static in dev (DEBUG=True); Vercel handles in prod

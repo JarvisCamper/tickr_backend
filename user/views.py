@@ -49,24 +49,24 @@ class LoginView(APIView):
 
         response = Response(payload, status=status.HTTP_200_OK)
 
-        # Also set HttpOnly cookies for tokens to reduce auth header issues in admin routes
-        # Note: For local dev, secure=False; in production ensure secure=True and proper domain settings
+        # Set HttpOnly auth cookies. Use secure cross-site cookies in production.
         try:
-            # In local dev, ensure cookies are set on HTTP too
+            secure_cookie = not settings.DEBUG
+            same_site = "None" if secure_cookie else "Lax"
             response.set_cookie(
                 key="access",
                 value=str(access),
                 httponly=True,
-                secure=False,
-                samesite="Lax",
+                secure=secure_cookie,
+                samesite=same_site,
                 path="/",
             )
             response.set_cookie(
                 key="refresh",
                 value=str(refresh),
                 httponly=True,
-                secure=False,
-                samesite="Lax",
+                secure=secure_cookie,
+                samesite=same_site,
                 path="/",
             )
         except Exception:
