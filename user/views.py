@@ -1,14 +1,14 @@
-from rest_framework import status, viewsets
-from rest_framework.decorators import permission_classes
+from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.conf import settings
+from django.db import DatabaseError
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
-from .models import User
+# from .models import User
 from .serializers import UserSerializer, LoginSerializer, SignupSerializer
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -18,8 +18,14 @@ class LoginView(APIView):
     serializer_class = LoginSerializer
 
     def post(self, request, *args, **kwargs):
-        serializer = self.serializer_class(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        try:
+            serializer = self.serializer_class(data=request.data)
+            serializer.is_valid(raise_exception=True)
+        except DatabaseError:
+            return Response(
+                {"detail": "Database temporarily unavailable. Please try again."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
 
         user = serializer.validated_data["user"]
 
@@ -92,7 +98,7 @@ class SignupView(APIView):
 
 class CurrentUserView(APIView):
     """Get or update the current authenticated user."""
-    parser_classes = [MultiPartParser, FormParser]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
