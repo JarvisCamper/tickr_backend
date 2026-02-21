@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from django.contrib.auth import get_user_model
 from django.db.models import Sum
+from django.db.models.functions import TruncMonth, TruncWeek
 from django.http import Http404
 from django.utils import timezone
 from rest_framework import status, viewsets
@@ -405,16 +406,24 @@ class TimeEntryViewSet(viewsets.ModelViewSet):
 class ReportView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @staticmethod
+    def _duration_to_hms(duration):
+        total_seconds = int(duration.total_seconds()) if duration else 0
+        h, rem = divmod(total_seconds, 3600)
+        m, s = divmod(rem, 60)
+        return f"{h:02d}:{m:02d}:{s:02d}", total_seconds
+
     def get(self, request):
         """Generate time tracking reports for the current user"""
-        entries = TimeEntry.objects.select_related('project').filter(user=request.user, end_time__isnull=False)
+        entries = TimeEntry.objects.select_related('project').filter(
+            user=request.user,
+            end_time__isnull=False,
+            duration__isnull=False,
+        )
 
         # Total time
         total_duration = entries.aggregate(total=Sum('duration'))['total']
-        total_seconds = int(total_duration.total_seconds()) if total_duration else 0
-        h, r = divmod(total_seconds, 3600)
-        m, s = divmod(r, 60)
-        total_str = f"{h:02d}:{m:02d}:{s:02d}"
+        total_str, _ = self._duration_to_hms(total_duration)
 
         # Per-project breakdown
         project_stats = (
@@ -425,18 +434,64 @@ class ReportView(APIView):
 
         breakdown = []
         for stat in project_stats:
-            secs = int(stat['hours'].total_seconds()) if stat['hours'] else 0
-            hh, rr = divmod(secs, 3600)
-            mm, ss = divmod(rr, 60)
+            hours_str, secs = self._duration_to_hms(stat['hours'])
             breakdown.append({
                 'project_name': stat['project__name'] or 'No Project',
-                'hours_str': f"{hh:02d}:{mm:02d}:{ss:02d}",
+                'hours_str': hours_str,
                 'total_seconds': secs
+            })
+
+        # Weekly summary (week starts on Monday, using entry start_time bucket)
+        weekly_stats = (
+            entries.annotate(week_start=TruncWeek('start_time', tzinfo=timezone.get_current_timezone()))
+            .values('week_start')
+            .annotate(total=Sum('duration'))
+            .order_by('-week_start')
+        )
+        weekly_summary = []
+        for stat in weekly_stats:
+            hours_str, secs = self._duration_to_hms(stat['total'])
+            weekly_summary.append({
+                'week_start': stat['week_start'].date().isoformat(),
+                'hours_str': hours_str,
+                'total_seconds': secs,
+            })
+
+        # Monthly summary (calendar months by start_time)
+        monthly_stats = (
+            entries.annotate(month_start=TruncMonth('start_time', tzinfo=timezone.get_current_timezone()))
+            .values('month_start')
+            .annotate(total=Sum('duration'))
+            .order_by('-month_start')
+        )
+        monthly_summary = []
+        for stat in monthly_stats:
+            hours_str, secs = self._duration_to_hms(stat['total'])
+            monthly_summary.append({
+                'month_start': stat['month_start'].date().isoformat(),
+                'hours_str': hours_str,
+                'total_seconds': secs,
+            })
+
+        # Recent activity list for report cards
+        recent_activity = []
+        for entry in entries.order_by('-start_time')[:10]:
+            hours_str, secs = self._duration_to_hms(entry.duration)
+            recent_activity.append({
+                'id': entry.id,
+                'project_name': entry.project.name if entry.project else 'No Project',
+                'description': entry.description,
+                'date': entry.start_time.date().isoformat(),
+                'hours_str': hours_str,
+                'total_seconds': secs,
             })
 
         return Response({
             "total_time": total_str,
-            "project_breakdown": breakdown
+            "project_breakdown": breakdown,
+            "weekly_summary": weekly_summary,
+            "monthly_summary": monthly_summary,
+            "recent_activity": recent_activity,
         })
 
 
