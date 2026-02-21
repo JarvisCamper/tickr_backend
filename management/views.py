@@ -453,7 +453,7 @@ class CurrentUserView(APIView):
         except Exception:
             # Fallback if serializer import fails
             is_admin = bool(getattr(request.user, 'is_staff', False) or getattr(request.user, 'is_superuser', False))
-            role = 'admin' if is_admin else 'member'
+            role = 'admin' if is_admin else 'employee'
             return Response({
                 "id": request.user.id,
                 "email": request.user.email,

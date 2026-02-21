@@ -1,4 +1,5 @@
 from django.urls import reverse
+from django.test import override_settings
 from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.test import APITestCase
@@ -34,8 +35,8 @@ class LoginEndpointTests(APITestCase):
 		resp = self.client.post(url, {"email": "m@x.com", "password": "pass"}, format="json")
 
 		self.assertEqual(resp.status_code, status.HTTP_200_OK)
-		self.assertEqual(resp.data.get("role"), "member")
-		self.assertEqual(resp.data.get("redirect_url"), "/timer")
+		self.assertEqual(resp.data.get("role"), "employee")
+		self.assertEqual(resp.data.get("redirect_url"), "/employee")
 		self.assertIn("access", resp.data)
 		self.assertIn("refresh", resp.data)
 		self.assertIn("user", resp.data)
@@ -81,3 +82,23 @@ class SignupSerializerTests(APITestCase):
 			}
 		)
 		self.assertTrue(serializer.is_valid(), serializer.errors)
+
+
+@override_settings(SECURE_SSL_REDIRECT=False)
+class SignupEndpointTests(APITestCase):
+	def test_signup_accepts_confirm_password_alias(self):
+		url = reverse("signup")
+		resp = self.client.post(
+			url,
+			{
+				"email": "new-user@example.com",
+				"username": "new-user",
+				"password": "secret123",
+				"confirmPassword": "secret123",
+			},
+			format="json",
+		)
+
+		self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+		self.assertEqual(resp.data.get("message"), "User registered successfully")
+		self.assertEqual(resp.data.get("data", {}).get("email"), "new-user@example.com")

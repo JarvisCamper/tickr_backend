@@ -3,40 +3,55 @@ from rest_framework import serializers
 from .models import User
 from rest_framework.exceptions import AuthenticationFailed
 
+
 class UserSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'})
+    password = serializers.CharField(
+        write_only=True, required=True, style={"input_type": "password"}
+    )
     avatar = serializers.ImageField(required=False, allow_null=True, use_url=True)
     is_admin = serializers.SerializerMethodField()
     role = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['id', 'email', 'username', 'password', 'avatar', 'is_staff', 'is_superuser', 'is_admin', 'role']
+        fields = [
+            "id",
+            "email",
+            "username",
+            "password",
+            "avatar",
+            "is_staff",
+            "is_superuser",
+            "is_admin",
+            "role",
+        ]
         extra_kwargs = {
-            'password': {'write_only': True},
-            'is_staff': {'read_only': True},
-            'is_superuser': {'read_only': True},
+            "password": {"write_only": True},
+            "is_staff": {"read_only": True},
+            "is_superuser": {"read_only": True},
         }
 
     def get_is_admin(self, obj):
-        return bool(getattr(obj, 'is_staff', False) or getattr(obj, 'is_superuser', False))
+        return bool(
+            getattr(obj, "is_staff", False) or getattr(obj, "is_superuser", False)
+        )
 
     def get_role(self, obj):
-        return 'admin' if self.get_is_admin(obj) else 'member'
+        return "admin" if self.get_is_admin(obj) else "employee"
 
     def create(self, validated_data):
-        password = validated_data.pop('password')
-        avatar = validated_data.pop('avatar', None)
+        password = validated_data.pop("password")
+        avatar = validated_data.pop("avatar", None)
         user = User(**validated_data)
-        user.set_password(password)  
+        user.set_password(password)
         if avatar:
             user.avatar = avatar
         user.save()
         return user
 
     def update(self, instance, validated_data):
-        password = validated_data.pop('password', None)
-        avatar = validated_data.pop('avatar', None)
+        password = validated_data.pop("password", None)
+        avatar = validated_data.pop("avatar", None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         if password:
@@ -45,7 +60,8 @@ class UserSerializer(serializers.ModelSerializer):
             instance.avatar = avatar
         instance.save()
         return instance
-    
+
+
 class LoginSerializer(serializers.Serializer):
     email = serializers.CharField(required=False)
     username = serializers.CharField(required=False)
@@ -79,33 +95,57 @@ class LoginSerializer(serializers.Serializer):
             "user": user,
         }
 
+
 class SignupSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'})
-    confirmPassword = serializers.CharField(write_only=True, required=False, style={'input_type': 'password'})
+    password = serializers.CharField(
+        write_only=True, required=True, style={"input_type": "password"}
+    )
+    password2 = serializers.CharField(
+        write_only=True, required=False, style={"input_type": "password"}
+    )
+    confirm_password = serializers.CharField(
+        write_only=True, required=False, style={"input_type": "password"}
+    )
+    confirmPassword = serializers.CharField(
+        write_only=True, required=False, style={"input_type": "password"}
+    )
 
     class Meta:
         model = User
-        fields = ['email', 'username', 'password', 'password2', 'confirm_password', 'confirmPassword']
+        fields = [
+            "email",
+            "username",
+            "password",
+            "password2",
+            "confirm_password",
+            "confirmPassword",
+        ]
 
     def validate(self, data):
-        password = data.get('password')
+        password = data.get("password")
         password2 = (
-         data.get('confirmPassword')
-            or self.initial_data.get('confirmPassword')
+            data.get("password2")
+            or data.get("confirm_password")
+            or data.get("confirmPassword")
+            or self.initial_data.get("password2")
+            or self.initial_data.get("confirm_password")
+            or self.initial_data.get("confirmPassword")
         )
 
         if not password2:
-            raise serializers.ValidationError({'password2': 'Confirm password is required.'})
+            raise serializers.ValidationError(
+                {"password2": "Confirm password is required."}
+            )
         if password != password2:
-            raise serializers.ValidationError({'password2': 'Passwords do not match.'})
-        data['password2'] = password2
+            raise serializers.ValidationError({"password2": "Passwords do not match."})
+        data["password2"] = password2
         return data
 
     def create(self, validated_data):
-        validated_data.pop('password2', None)
-        validated_data.pop('confirm_password', None)
-        validated_data.pop('confirmPassword', None)
-        password = validated_data.pop('password')
+        validated_data.pop("password2", None)
+        validated_data.pop("confirm_password", None)
+        validated_data.pop("confirmPassword", None)
+        password = validated_data.pop("password")
         user = User(**validated_data)
         user.set_password(password)
         user.save()

@@ -5,7 +5,7 @@ from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.conf import settings
-from django.db import DatabaseError
+from django.db import DatabaseError, IntegrityError
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 # from .models import User
@@ -36,7 +36,7 @@ class LoginView(APIView):
         is_staff = bool(getattr(user, "is_staff", False))
         is_superuser = bool(getattr(user, "is_superuser", False))
         is_admin = is_staff or is_superuser
-        role = "admin" if is_admin else "member"
+        role = "admin" if is_admin else "employee"
         
         # Build response payload; include admin flags and redirect_url
         payload = {
@@ -50,7 +50,7 @@ class LoginView(APIView):
             "is_admin": is_admin,
             "role": role,
             # Tell frontend where to redirect based on role
-            "redirect_url": "/admin" if is_admin else "/timer",
+            "redirect_url": "/admin" if is_admin else "/employee",
         }
 
         response = Response(payload, status=status.HTTP_200_OK)
@@ -87,13 +87,23 @@ class SignupView(APIView):
 
     def post(self, request, *args, **kwargs):
         serializer = self.serializer_class(data=request.data)
-        if serializer.is_valid():
+        try:
+            serializer.is_valid(raise_exception=True)
             serializer.save()
             return Response(
                 {"message": "User registered successfully", "data": serializer.data},
                 status=status.HTTP_201_CREATED,
             )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except IntegrityError:
+            return Response(
+                {"detail": "An account with this email already exists."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except DatabaseError:
+            return Response(
+                {"detail": "Database temporarily unavailable. Please try again."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
 
 
 class CurrentUserView(APIView):
