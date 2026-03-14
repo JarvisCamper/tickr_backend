@@ -2,12 +2,13 @@ from django.urls import path
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from .views import LoginView, SignupView, CurrentUserView
+from .views import LoginView, SignupView, CurrentUserView, LogoutView
 
 router = DefaultRouter()
 
 urlpatterns = [
     path('login/', LoginView.as_view(), name='login'),
+    path('logout/', LogoutView.as_view(), name='logout'),
     path('signup/', SignupView.as_view(), name='signup'),
     path('user/', CurrentUserView.as_view(), name='current_user'),
 

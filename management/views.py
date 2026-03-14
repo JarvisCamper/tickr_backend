@@ -14,6 +14,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from decouple import config
+from admin_site.admin_config import get_admin_setting, send_admin_email
 
 from .models import Project, Team, TeamMember, TimeEntry, TeamInvitation
 from .serializers import (
@@ -55,6 +56,10 @@ class ProjectViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         """Automatically set the creator to the current user"""
+        max_projects = get_admin_setting('max_projects_per_user')
+        if max_projects and Project.objects.filter(creator=self.request.user).count() >= max_projects:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({"detail": f"Project limit reached. Maximum allowed per user is {max_projects}."})
         serializer.save(creator=self.request.user)
 
 
@@ -97,12 +102,20 @@ class TeamViewSet(viewsets.ModelViewSet):
             )
         
         try:
+            max_team_members = get_admin_setting('max_team_members')
+            existing_members = team.members.count() + 1
+            if max_team_members and existing_members >= max_team_members:
+                return Response(
+                    {"detail": f"Team member limit reached ({max_team_members})."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
             unique_placeholder = f"invite-{uuid4().hex[:12]}@pending.local"
             invitation = TeamInvitation.objects.create(
                 team=team,
                 email=unique_placeholder,
                 invited_by=request.user,
-                expires_at=timezone.now() + timedelta(days=7)
+                expires_at=timezone.now() + timedelta(days=get_admin_setting('team_invite_expiry_days'))
             )
             
             invitation_link = f"{FRONTEND_URL}/teams/AcceptInvite/{invitation.token}"
@@ -244,7 +257,7 @@ class TeamViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        project_id = request.data.get('project_id')
+            project_id = request.data.get('project_id')
         if not project_id:
             return Response(
                 {"detail": "project_id is required"},
@@ -347,6 +360,9 @@ class TimeEntryViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def start(self, request):
         """Start a new timer (stop any running one first)"""
+        if get_admin_setting("require_timer_description") and not request.data.get('description', '').strip():
+            return Response({"detail": "Description is required to start timer"}, status=status.HTTP_400_BAD_REQUEST)
+
         TimeEntry.objects.filter(
             user=request.user,
             is_running=True
@@ -551,16 +567,37 @@ def send_team_invitation(request, team_id):
                 {"detail": "User is already a team member"},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        max_team_members = get_admin_setting('max_team_members')
+        existing_members = team.members.count() + 1
+        if max_team_members and existing_members >= max_team_members:
+            return Response(
+                {"detail": f"Team member limit reached ({max_team_members})."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         email = invited_user.email
         invitation = TeamInvitation.objects.create(
             team=team,
             email=email,
             invited_by=request.user,
-            expires_at=timezone.now() + timedelta(days=7)
+            expires_at=timezone.now() + timedelta(days=get_admin_setting('team_invite_expiry_days'))
         )
         
         invitation_link = f"{FRONTEND_URL}/teams/AcceptInvite/{invitation.token}"
+
+        if get_admin_setting("invite_emails_enabled"):
+            try:
+                send_admin_email(
+                    subject=f"Invitation to join {team.name} on Tickr",
+                    body=(
+                        f"You've been invited to join the team \"{team.name}\".\n\n"
+                        f"Accept invitation: {invitation_link}"
+                    ),
+                    recipients=[email],
+                )
+            except Exception:
+                logger.exception("Failed to send invitation email")
         
         return Response({
             "detail": "Invitation sent successfully",
@@ -575,7 +612,7 @@ def send_team_invitation(request, team_id):
             team=team,
             email=unique_placeholder,
             invited_by=request.user,
-            expires_at=timezone.now() + timedelta(days=7)
+            expires_at=timezone.now() + timedelta(days=get_admin_setting('team_invite_expiry_days'))
         )
         
         invitation_link = f"{FRONTEND_URL}/teams/AcceptInvite/{invitation.token}"
@@ -600,15 +637,36 @@ def send_team_invitation(request, team_id):
             {"detail": "User is already a team member"},
             status=status.HTTP_400_BAD_REQUEST
         )
+
+    max_team_members = get_admin_setting('max_team_members')
+    existing_members = team.members.count() + 1
+    if max_team_members and existing_members >= max_team_members:
+        return Response(
+            {"detail": f"Team member limit reached ({max_team_members})."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
     
     invitation = TeamInvitation.objects.create(
         team=team,
         email=email,
         invited_by=request.user,
-        expires_at=timezone.now() + timedelta(days=7)
+        expires_at=timezone.now() + timedelta(days=get_admin_setting('team_invite_expiry_days'))
     )
     
     invitation_link = f"{FRONTEND_URL}/teams/AcceptInvite/{invitation.token}"
+
+    if get_admin_setting("invite_emails_enabled"):
+        try:
+            send_admin_email(
+                subject=f"Invitation to join {team.name} on Tickr",
+                body=(
+                    f"You've been invited to join the team \"{team.name}\".\n\n"
+                    f"Accept invitation: {invitation_link}"
+                ),
+                recipients=[email],
+            )
+        except Exception:
+            logger.exception("Failed to send invitation email")
     
     return Response({
         "detail": "Invitation sent successfully",

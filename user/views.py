@@ -10,6 +10,8 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 # from .models import User
 from .serializers import UserSerializer, LoginSerializer, SignupSerializer
+from admin_site.admin_config import get_admin_setting
+from admin_site.utils import log_user_access_event
 
 @method_decorator(csrf_exempt, name='dispatch')
 class LoginView(APIView):
@@ -55,6 +57,8 @@ class LoginView(APIView):
 
         response = Response(payload, status=status.HTTP_200_OK)
 
+        log_user_access_event(user, "login", request=request)
+
         # Set HttpOnly auth cookies. Use secure cross-site cookies in production.
         try:
             secure_cookie = not settings.DEBUG
@@ -80,12 +84,30 @@ class LoginView(APIView):
             pass
 
         return response
+
+
+class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        log_user_access_event(request.user, "logout", request=request)
+
+        response = Response({"message": "Logout successful"}, status=status.HTTP_200_OK)
+        response.delete_cookie("access", path="/")
+        response.delete_cookie("refresh", path="/")
+        return response
     
 class SignupView(APIView):
     permission_classes = [AllowAny]
     serializer_class = SignupSerializer
 
     def post(self, request, *args, **kwargs):
+        if not get_admin_setting("allow_public_registration"):
+            return Response(
+                {"detail": "Public registration is currently disabled by the administrator."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         serializer = self.serializer_class(data=request.data)
         try:
             serializer.is_valid(raise_exception=True)

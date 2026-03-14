@@ -4,8 +4,10 @@ from .views import (
     AdminUserViewSet,
     AdminTeamViewSet,
     AdminProjectViewSet,
+    AdminTimeEntryViewSet,
     AdminAnalyticsViewSet,
     AdminActivityLogViewSet,
+    AdminUserAccessLogViewSet,
     AdminSettingsViewSet
 )
 
@@ -13,8 +15,10 @@ router = DefaultRouter()
 router.register(r'users', AdminUserViewSet, basename='admin-user')
 router.register(r'teams', AdminTeamViewSet, basename='admin-team')
 router.register(r'projects', AdminProjectViewSet, basename='admin-project')
+router.register(r'time-entries', AdminTimeEntryViewSet, basename='admin-time-entry')
 router.register(r'analytics', AdminAnalyticsViewSet, basename='admin-analytics')
 router.register(r'activity-logs', AdminActivityLogViewSet, basename='admin-activity-log')
+router.register(r'auth-events', AdminUserAccessLogViewSet, basename='admin-auth-event')
 router.register(r'settings', AdminSettingsViewSet, basename='admin-settings')
 
 urlpatterns = [

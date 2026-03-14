@@ -45,6 +45,38 @@ class ActivityLog(models.Model):
         return f"{self.admin_user} - {self.action} at {self.created_at}"
 
 
+class UserAccessLog(models.Model):
+    """Track login/logout activity for all users"""
+
+    EVENT_TYPES = [
+        ("login", "Login"),
+        ("logout", "Logout"),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="access_logs",
+        db_index=True,
+    )
+    event_type = models.CharField(max_length=20, choices=EVENT_TYPES, db_index=True)
+    role = models.CharField(max_length=20, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "created_at"]),
+            models.Index(fields=["event_type", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.user} - {self.event_type} at {self.created_at}"
+
+
 class AdminSettings(models.Model):
     """System-wide admin settings"""
     key = models.CharField(max_length=100, unique=True, db_index=True)

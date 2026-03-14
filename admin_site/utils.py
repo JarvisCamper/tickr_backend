@@ -1,4 +1,4 @@
-from .models import ActivityLog
+from .models import ActivityLog, UserAccessLog
 
 
 def get_client_ip(request):
@@ -36,3 +36,17 @@ def log_admin_action(admin_user, action, target_type, target_id, description, re
         log_data['user_agent'] = request.META.get('HTTP_USER_AGENT', '')[:500]
     
     return ActivityLog.objects.create(**log_data)
+
+
+def log_user_access_event(user, event_type, request=None):
+    log_data = {
+        "user": user,
+        "event_type": event_type,
+        "role": "admin" if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False) else "employee",
+    }
+
+    if request:
+        log_data["ip_address"] = get_client_ip(request)
+        log_data["user_agent"] = request.META.get("HTTP_USER_AGENT", "")[:500]
+
+    return UserAccessLog.objects.create(**log_data)
