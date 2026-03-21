@@ -10,6 +10,7 @@ from django.http import Http404
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -89,6 +90,32 @@ class TeamViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """Automatically set the owner to the current user"""
         serializer.save(owner=self.request.user)
+
+    def perform_update(self, serializer):
+        """Only the team owner can edit team details"""
+        if serializer.instance.owner != self.request.user:
+            raise PermissionDenied("Only team owner can edit team details")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        """Only the team owner can delete the team"""
+        if instance.owner != self.request.user:
+            raise PermissionDenied("Only team owner can delete the team")
+        instance.delete()
+
+    @action(detail=False, methods=['get'], url_path='joined')
+    def joined(self, request):
+        """Return teams the user has joined but does not own"""
+        return Response(
+            TeamSerializer(
+                Team.objects.select_related('owner').prefetch_related('members__user').filter(
+                    members__user=request.user
+                ).exclude(owner=request.user).distinct(),
+                many=True,
+                context={'request': request}
+            ).data,
+            status=status.HTTP_200_OK
+        )
 
     @action(detail=True, methods=['post'], url_path='invite')
     def invite(self, request, pk=None):
@@ -226,61 +253,89 @@ class TeamViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='assign-project')
     def assign_project(self, request, pk=None):
         """Assign a project to this team"""
-        # Try to get the team - get_object() uses get_queryset() which filters by user access
         try:
-            team = self.get_object()
-        except Http404:
-            # Try to get more information about why it failed
             try:
-                # Check if team exists at all
-                team_exists = Team.objects.filter(id=pk).exists()
-                if not team_exists:
+                # Try to get the team - get_object() uses get_queryset() which filters by user access
+                team = self.get_object()
+            except Http404:
+                try:
+                    team_exists = Team.objects.filter(id=pk).exists()
+                    if not team_exists:
+                        return Response(
+                            {"detail": f"Team with ID {pk} does not exist"},
+                            status=status.HTTP_404_NOT_FOUND
+                        )
                     return Response(
-                        {"detail": f"Team with ID {pk} does not exist"},
-                        status=status.HTTP_404_NOT_FOUND
+                        {"detail": f"You don't have access to team {pk}. You must be the owner or a member."},
+                        status=status.HTTP_403_FORBIDDEN
                     )
-                # Team exists but user doesn't have access
+                except (ValueError, TypeError):
+                    return Response(
+                        {"detail": f"Invalid team ID: {pk}"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+            if team.owner != request.user:
                 return Response(
-                    {"detail": f"You don't have access to team {pk}. You must be the owner or a member."},
+                    {
+                        "detail": "Only team owner can assign projects"
+                    },
                     status=status.HTTP_403_FORBIDDEN
                 )
-            except (ValueError, TypeError):
+
+            project_id = request.data.get('project_id')
+            if not project_id:
                 return Response(
-                    {"detail": f"Invalid team ID: {pk}"},
+                    {"detail": "project_id is required"},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-        
-        # Check if user is the owner
-        if team.owner != request.user:
-            return Response(
-                {"detail": "Only team owner can assign projects"},
-                status=status.HTTP_403_FORBIDDEN
+
+            try:
+                project_id = int(project_id)
+            except (TypeError, ValueError):
+                return Response(
+                    {"detail": "Invalid project_id format"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            try:
+                project = Project.objects.select_related('creator', 'team').get(
+                    id=project_id,
+                    creator=request.user
+                )
+
+                if project.team_id == team.id:
+                    return Response(
+                        {
+                            "detail": "Project is already assigned to this team",
+                            "project": ProjectSerializer(project, context={'request': request}).data
+                        },
+                        status=status.HTTP_200_OK
+                    )
+
+                project.team = team
+                project.save(update_fields=['team'])
+
+                return Response({
+                    "detail": "Project assigned successfully",
+                    "project": ProjectSerializer(project, context={'request': request}).data
+                }, status=status.HTTP_200_OK)
+
+            except Project.DoesNotExist:
+                return Response(
+                    {"detail": "Project not found or you don't have permission"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        except Exception as exc:
+            logger.exception(
+                "Error assigning project %s to team %s for user %s",
+                request.data.get('project_id'),
+                pk,
+                getattr(request.user, 'id', None),
             )
-        
-            project_id = request.data.get('project_id')
-        if not project_id:
             return Response(
-                {"detail": "project_id is required"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        try:
-            # Get the project and check ownership
-            project = Project.objects.get(id=project_id, creator=request.user)
-            
-            # Assign project to team
-            project.team = team
-            project.save()
-            
-            return Response({
-                "detail": "Project assigned successfully",
-                "project": ProjectSerializer(project, context={'request': request}).data
-            }, status=status.HTTP_200_OK)
-            
-        except Project.DoesNotExist:
-            return Response(
-                {"detail": "Project not found or you don't have permission"},
-                status=status.HTTP_404_NOT_FOUND
+                {"detail": f"Error assigning project: {str(exc)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
     @action(detail=True, methods=['post'], url_path='unassign-project')
@@ -301,14 +356,26 @@ class TeamViewSet(viewsets.ModelViewSet):
                 {"detail": "project_id is required"},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        try:
+            project_id = int(project_id)
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "Invalid project_id format"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         try:
             # Get the project
-            project = Project.objects.get(id=project_id, team=team, creator=request.user)
+            project = Project.objects.select_related('creator', 'team').get(
+                id=project_id,
+                team=team,
+                creator=request.user
+            )
             
             # Unassign project from team
             project.team = None
-            project.save()
+            project.save(update_fields=['team'])
             
             return Response({
                 "detail": "Project unassigned successfully",
@@ -319,6 +386,17 @@ class TeamViewSet(viewsets.ModelViewSet):
             return Response(
                 {"detail": "Project not found or not assigned to this team"},
                 status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as exc:
+            logger.exception(
+                "Error unassigning project %s from team %s for user %s",
+                project_id,
+                team.id,
+                request.user.id,
+            )
+            return Response(
+                {"detail": f"Error unassigning project: {str(exc)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
 

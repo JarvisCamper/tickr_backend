@@ -7,7 +7,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from management.models import Project, TimeEntry
+from management.models import Project, Team, TimeEntry
 
 
 @override_settings(SECURE_SSL_REDIRECT=False)
@@ -65,3 +65,81 @@ class ReportsViewTests(APITestCase):
         self.assertEqual(monthly[0]["hours_str"], "00:15:00")
         self.assertEqual(monthly[1]["month_start"], "2025-12-01")
         self.assertEqual(monthly[1]["hours_str"], "00:02:00")
+
+
+@override_settings(SECURE_SSL_REDIRECT=False)
+class TeamAssignProjectTests(APITestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            email="owner@example.com",
+            username="team-owner",
+            password="secret123",
+        )
+        self.client.force_authenticate(self.user)
+        self.team = Team.objects.create(
+            name="Alpha Team",
+            description="",
+            owner=self.user,
+        )
+
+    def test_assign_project_requires_project_id(self):
+        response = self.client.post(
+            reverse("team-assign-project", args=[self.team.id]),
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["detail"], "project_id is required")
+
+    def test_assign_project_rejects_invalid_project_id(self):
+        response = self.client.post(
+            reverse("team-assign-project", args=[self.team.id]),
+            {"project_id": "abc"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["detail"], "Invalid project_id format")
+
+    def test_assign_project_returns_assigned_project(self):
+        project = Project.objects.create(
+            name="Inbox Cleanup",
+            description="",
+            type="individual",
+            creator=self.user,
+        )
+
+        response = self.client.post(
+            reverse("team-assign-project", args=[self.team.id]),
+            {"project_id": project.id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["detail"], "Project assigned successfully")
+        self.assertEqual(response.data["project"]["id"], project.id)
+        self.assertEqual(response.data["project"]["team_id"], self.team.id)
+
+        project.refresh_from_db()
+        self.assertEqual(project.team_id, self.team.id)
+
+    def test_assign_project_returns_existing_assignment(self):
+        project = Project.objects.create(
+            name="Inbox Cleanup",
+            description="",
+            type="individual",
+            creator=self.user,
+            team=self.team,
+        )
+
+        response = self.client.post(
+            reverse("team-assign-project", args=[self.team.id]),
+            {"project_id": project.id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["detail"], "Project is already assigned to this team")
+        self.assertEqual(response.data["project"]["id"], project.id)
+        self.assertEqual(response.data["project"]["team_id"], self.team.id)
