@@ -16,9 +16,10 @@ Including another URLconf
 """
 # tickr/urls.py
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
+from django.views.static import serve
 from rest_framework_simplejwt.views import TokenRefreshView, TokenObtainPairView
 
 urlpatterns = [
@@ -31,7 +32,11 @@ urlpatterns = [
     path('api/auth/', include('rest_framework.urls')),
 ]
 
-# Serve media/static
-if settings.DEBUG:
+# Always expose uploaded media files so locally captured screenshots can be previewed.
+urlpatterns += [
+    re_path(r"^media/(?P<path>.*)$", serve, {"document_root": settings.MEDIA_ROOT}),
+]
+
+# Static files can stay dev-oriented.
+if settings.DEBUG or "localhost" in settings.ALLOWED_HOSTS or "127.0.0.1" in settings.ALLOWED_HOSTS:
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

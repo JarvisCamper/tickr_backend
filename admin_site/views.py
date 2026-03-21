@@ -13,7 +13,7 @@ from datetime import timedelta
 
 # Import models from other apps
 from user.models import User
-from management.models import Team, Project, TimeEntry
+from management.models import Team, Project, TimeEntry, Screenshot
 
 # Import admin models and utilities
 from .models import ActivityLog, AdminSettings, UserAccessLog
@@ -27,6 +27,7 @@ from .serializers import (
     AdminProjectListSerializer,
     AdminProjectWriteSerializer,
     AdminTimeEntryListSerializer,
+    AdminScreenshotListSerializer,
     AdminAnalyticsOverviewSerializer,
     AdminUserGrowthSerializer,
     AdminActivitySerializer,
@@ -393,6 +394,66 @@ class AdminTimeEntryViewSet(viewsets.ReadOnlyModelViewSet):
             queryset, many=True, context={"overtime_map": overtime_map}
         )
         return Response(serializer.data)
+
+
+class AdminScreenshotViewSet(viewsets.ModelViewSet):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAdminUser]
+    pagination_class = StandardResultsSetPagination
+    serializer_class = AdminScreenshotListSerializer
+
+    def get_queryset(self):
+        queryset = Screenshot.objects.select_related("user", "project", "time_entry").order_by(
+            "-captured_at"
+        )
+
+        search = self.request.query_params.get("search", None)
+        user_id = self.request.query_params.get("user_id", None)
+        project_id = self.request.query_params.get("project_id", None)
+        time_entry_id = self.request.query_params.get("time_entry_id", None)
+        captured_on = self.request.query_params.get("captured_on", None)
+
+        if search:
+            queryset = queryset.filter(
+                Q(user__email__icontains=search)
+                | Q(user__username__icontains=search)
+                | Q(project__name__icontains=search)
+                | Q(time_entry__description__icontains=search)
+            )
+
+        if user_id:
+            queryset = queryset.filter(user_id=user_id)
+
+        if project_id:
+            queryset = queryset.filter(project_id=project_id)
+
+        if time_entry_id:
+            queryset = queryset.filter(time_entry_id=time_entry_id)
+
+        if captured_on:
+            queryset = queryset.filter(captured_at__date=captured_on)
+
+        return queryset
+
+    def destroy(self, request, *args, **kwargs):
+        screenshot = self.get_object()
+        screenshot_id = screenshot.id
+        username = screenshot.user.username or screenshot.user.email
+
+        if screenshot.image:
+            screenshot.image.delete(save=False)
+
+        log_admin_action(
+            admin_user=request.user,
+            action="screenshot_delete",
+            target_type="screenshot",
+            target_id=screenshot_id,
+            description=f"Deleted screenshot {screenshot_id} for {username}",
+            request=request,
+        )
+
+        screenshot.delete()
+        return Response(status=204)
 
 
 # ==================== ANALYTICS VIEWSETS ====================

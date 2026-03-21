@@ -3,7 +3,7 @@ from django.db.models import Sum
 
 # Import models from other apps
 from user.models import User
-from management.models import Team, Project, TimeEntry, TeamMember
+from management.models import Team, Project, TimeEntry, TeamMember, Screenshot
 
 # Import admin models
 from .models import ActivityLog, UserAccessLog
@@ -210,6 +210,40 @@ class AdminTimeEntryListSerializer(serializers.ModelSerializer):
         overtime_map = self.context.get("overtime_map", {})
         value = overtime_map.get(obj.id, {}).get("overtime_pay")
         return str(value or "0.00")
+
+
+class AdminScreenshotListSerializer(serializers.ModelSerializer):
+    user_email = serializers.EmailField(source="user.email", read_only=True)
+    username = serializers.CharField(source="user.username", read_only=True)
+    project_name = serializers.CharField(source="project.name", read_only=True, allow_null=True)
+    time_entry_description = serializers.CharField(source="time_entry.description", read_only=True)
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Screenshot
+        fields = [
+            "id",
+            "user",
+            "user_email",
+            "username",
+            "project",
+            "project_name",
+            "time_entry",
+            "time_entry_description",
+            "image",
+            "image_url",
+            "capture_source",
+            "captured_at",
+        ]
+        read_only_fields = fields
+
+    def get_image_url(self, obj):
+        request = self.context.get("request")
+        if not obj.image:
+            return None
+        if request:
+            return request.build_absolute_uri(obj.image.url)
+        return obj.image.url
 
 
 # ==================== ANALYTICS SERIALIZERS ====================

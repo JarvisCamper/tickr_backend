@@ -113,6 +113,52 @@ class TimeEntry(models.Model):
         return f"{self.user.get_username()}: {self.description[:30]}"
 
 
+class Screenshot(models.Model):
+    CAPTURE_SOURCE_CHOICES = [
+        ("screen-share", "Screen Share"),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="screenshots",
+        db_index=True,
+    )
+    time_entry = models.ForeignKey(
+        TimeEntry,
+        on_delete=models.CASCADE,
+        related_name="screenshots",
+        db_index=True,
+    )
+    project = models.ForeignKey(
+        Project,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="screenshots",
+        db_index=True,
+    )
+    image = models.ImageField(upload_to="screenshots/%Y/%m/%d/")
+    capture_source = models.CharField(
+        max_length=20,
+        choices=CAPTURE_SOURCE_CHOICES,
+        default="screen-share",
+    )
+    captured_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["user", "captured_at"]),
+            models.Index(fields=["time_entry", "captured_at"]),
+            models.Index(fields=["project", "captured_at"]),
+        ]
+        ordering = ["-captured_at"]
+
+    def __str__(self):
+        project_name = self.project.name if self.project else "No Project"
+        return f"{self.user.get_username()} screenshot for {project_name} at {self.captured_at.isoformat()}"
+
+
 class TeamInvitation(models.Model):
     STATUS_CHOICES = [
         ('pending', 'Pending'),

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Project, Team, TeamMember, TimeEntry, TeamInvitation
+from .models import Project, Team, TeamMember, TimeEntry, TeamInvitation, Screenshot
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -104,3 +104,37 @@ class TeamInvitationSerializer(serializers.ModelSerializer):
         model = TeamInvitation
         fields = ['id', 'team', 'team_name', 'email', 'invited_by', 'invited_by_username', 'token', 'status', 'created_at', 'expires_at', 'accepted_at']
         read_only_fields = ['token', 'created_at']
+
+
+class ScreenshotSerializer(serializers.ModelSerializer):
+    project_name = serializers.CharField(source="project.name", read_only=True, allow_null=True)
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Screenshot
+        fields = [
+            "id",
+            "user",
+            "time_entry",
+            "project",
+            "project_name",
+            "image",
+            "image_url",
+            "capture_source",
+            "captured_at",
+        ]
+        read_only_fields = ["user", "project", "captured_at", "image_url"]
+
+    def get_image_url(self, obj):
+        request = self.context.get("request")
+        if not obj.image:
+            return None
+        if request:
+            return request.build_absolute_uri(obj.image.url)
+        return obj.image.url
+
+    def validate_time_entry(self, value):
+        request = self.context.get("request")
+        if request and value.user_id != request.user.id:
+            raise serializers.ValidationError("You can only upload screenshots for your own active time entry.")
+        return value

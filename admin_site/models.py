@@ -13,6 +13,7 @@ class ActivityLog(models.Model):
         ('user_activate', 'User Activated'),
         ('team_delete', 'Team Deleted'),
         ('project_delete', 'Project Deleted'),
+        ('screenshot_delete', 'Screenshot Deleted'),
         ('settings_update', 'Settings Updated'),
         ('login', 'Admin Login'),
         ('logout', 'Admin Logout'),

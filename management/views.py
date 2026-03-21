@@ -11,18 +11,20 @@ from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from decouple import config
 from admin_site.admin_config import get_admin_setting, send_admin_email
 
-from .models import Project, Team, TeamMember, TimeEntry, TeamInvitation
+from .models import Project, Team, TeamMember, TimeEntry, TeamInvitation, Screenshot
 from .serializers import (
     ProjectSerializer,
     TeamSerializer,
     TimeEntrySerializer,
-    TeamInvitationSerializer
+    TeamInvitationSerializer,
+    ScreenshotSerializer,
 )
 
 User = get_user_model()
@@ -350,7 +352,7 @@ class TeamViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        project_id = request.data.get('project_id')
+        project_id = request.data.get('project_id') or request.data.get('project')
         if not project_id:
             return Response(
                 {"detail": "project_id is required"},
@@ -494,6 +496,38 @@ class TimeEntryViewSet(viewsets.ModelViewSet):
         entry.save()
 
         return Response(TimeEntrySerializer(entry, context={'request': request}).data)
+
+
+class ScreenshotViewSet(viewsets.ModelViewSet):
+    queryset = Screenshot.objects.all()
+    serializer_class = ScreenshotSerializer
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+    http_method_names = ["get", "post", "head", "options", "delete"]
+
+    def get_queryset(self):
+        return Screenshot.objects.select_related("user", "project", "time_entry").filter(
+            user=self.request.user
+        )
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["request"] = self.request
+        return context
+
+    def perform_create(self, serializer):
+        time_entry = serializer.validated_data["time_entry"]
+
+        if time_entry.user_id != self.request.user.id:
+            raise PermissionDenied("You can only upload screenshots for your own time entry.")
+
+        if not time_entry.is_running:
+            raise PermissionDenied("Screenshots can only be uploaded for an active time entry.")
+
+        serializer.save(
+            user=self.request.user,
+            project=time_entry.project,
+        )
 
 
 # REPORTS VIEW
