@@ -8,10 +8,13 @@ from django.conf import settings
 from django.db import DatabaseError, IntegrityError
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
+import logging
 # from .models import User
 from .serializers import UserSerializer, LoginSerializer, SignupSerializer
 from admin_site.admin_config import get_admin_setting
 from admin_site.utils import log_user_access_event
+
+logger = logging.getLogger(__name__)
 
 @method_decorator(csrf_exempt, name='dispatch')
 class LoginView(APIView):
@@ -140,6 +143,13 @@ class CurrentUserView(APIView):
     def patch(self, request):
         serializer = UserSerializer(request.user, data=request.data, partial=True, context={"request": request})
         if serializer.is_valid():
-            serializer.save()
+            try:
+                serializer.save()
+            except OSError:
+                logger.exception("Avatar upload failed for user %s", request.user.pk)
+                return Response(
+                    {"detail": "Avatar upload is temporarily unavailable. Please try again later."},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
             return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

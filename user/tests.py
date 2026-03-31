@@ -1,5 +1,7 @@
 from django.urls import reverse
 from django.test import override_settings
+from django.core.files.uploadedfile import SimpleUploadedFile
+from tempfile import TemporaryDirectory
 from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.test import APITestCase
@@ -102,3 +104,38 @@ class SignupEndpointTests(APITestCase):
 		self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
 		self.assertEqual(resp.data.get("message"), "User registered successfully")
 		self.assertEqual(resp.data.get("data", {}).get("email"), "new-user@example.com")
+
+
+@override_settings(SECURE_SSL_REDIRECT=False)
+class CurrentUserAvatarUploadTests(APITestCase):
+	def setUp(self):
+		self.temp_media = TemporaryDirectory()
+		self.override = override_settings(MEDIA_ROOT=self.temp_media.name)
+		self.override.enable()
+		self.addCleanup(self.override.disable)
+		self.addCleanup(self.temp_media.cleanup)
+
+		self.user = User.objects.create_user(
+			email="avatar@example.com",
+			password="secret123",
+			username="avatar-user",
+		)
+		self.client.force_authenticate(self.user)
+
+	def test_current_user_can_upload_avatar(self):
+		response = self.client.patch(
+			reverse("current_user"),
+			{
+				"avatar": SimpleUploadedFile(
+					"avatar.gif",
+					b"GIF87a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;",
+					content_type="image/gif",
+				)
+			},
+			format="multipart",
+		)
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		self.user.refresh_from_db()
+		self.assertTrue(bool(self.user.avatar))
+		self.assertTrue(self.user.avatar.storage.exists(self.user.avatar.name))
