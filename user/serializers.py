@@ -8,7 +8,6 @@ class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(
         write_only=True, required=True, style={"input_type": "password"}
     )
-    avatar = serializers.ImageField(required=False, allow_null=True, use_url=True)
     is_admin = serializers.SerializerMethodField()
     role = serializers.SerializerMethodField()
 
@@ -19,7 +18,6 @@ class UserSerializer(serializers.ModelSerializer):
             "email",
             "username",
             "password",
-            "avatar",
             "is_staff",
             "is_superuser",
             "is_admin",
@@ -41,23 +39,17 @@ class UserSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         password = validated_data.pop("password")
-        avatar = validated_data.pop("avatar", None)
         user = User(**validated_data)
         user.set_password(password)
-        if avatar:
-            user.avatar = avatar
         user.save()
         return user
 
     def update(self, instance, validated_data):
         password = validated_data.pop("password", None)
-        avatar = validated_data.pop("avatar", None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         if password:
             instance.set_password(password)
-        if avatar is not None:
-            instance.avatar = avatar
         instance.save()
         return instance
 

@@ -20,7 +20,7 @@ class AdminUserListSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'id', 'email', 'username', 'avatar', 'is_active', 
+            'id', 'email', 'username', 'is_active', 
             'is_staff', 'is_superuser', 'last_login', 'created_at',
             'total_time_entries', 'teams_count', 'projects_count'
         ]
@@ -38,7 +38,7 @@ class AdminUserDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'id', 'email', 'username', 'avatar', 'is_active', 
+            'id', 'email', 'username', 'is_active', 
             'is_staff', 'is_superuser', 'last_login', 'created_at',
             'total_time_entries', 'total_time_tracked',
             'teams', 'owned_teams', 'recent_projects'
