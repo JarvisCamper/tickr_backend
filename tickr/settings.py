@@ -31,6 +31,9 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'corsheaders',
 
+    'cloudinary_storage',
+    'cloudinary',
+
     'user',
     'management',
     'admin_site',
@@ -172,12 +175,27 @@ SIMPLE_JWT = {
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles_build'
 MEDIA_URL = '/media/'
-IS_VERCEL = config('VERCEL', default=False, cast=bool)
-default_media_root = Path('/tmp/tickr-media') if IS_VERCEL else BASE_DIR / 'media'
-MEDIA_ROOT = Path(config('MEDIA_ROOT', default=str(default_media_root)))
-MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
-if IS_VERCEL:
-    FILE_UPLOAD_TEMP_DIR = '/tmp'
+
+# Use Cloudinary if configured, else local filesystem
+CLOUDINARY_URL = config('CLOUDINARY_URL', default='')
+
+if CLOUDINARY_URL:
+    STORAGES = {
+        "default": {"BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage"},
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    }
+else:
+    STORAGES = {
+        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    }
+    IS_VERCEL = config('VERCEL', default=False, cast=bool)
+    default_media_root = Path('/tmp/tickr-media') if IS_VERCEL else BASE_DIR / 'media'
+    MEDIA_ROOT = Path(config('MEDIA_ROOT', default=str(default_media_root)))
+    MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
+
+    if IS_VERCEL:
+        FILE_UPLOAD_TEMP_DIR = '/tmp'
 
 # Default
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
