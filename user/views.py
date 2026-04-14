@@ -9,7 +9,6 @@ from django.db import DatabaseError, IntegrityError
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 import logging
-# from .models import User
 from .serializers import UserSerializer, LoginSerializer, SignupSerializer
 from admin_site.admin_config import get_admin_setting
 from admin_site.utils import log_user_access_event
@@ -43,7 +42,7 @@ class LoginView(APIView):
         is_admin = is_staff or is_superuser
         role = "admin" if is_admin else "employee"
         
-        # Build response payload; include admin flags and redirect_url
+        # Build response payload
         payload = {
             "message": "Login successful",
             "access": str(access),
@@ -54,7 +53,6 @@ class LoginView(APIView):
             "is_superuser": is_superuser,
             "is_admin": is_admin,
             "role": role,
-            # Tell frontend where to redirect based on role
             "redirect_url": "/admin" if is_admin else "/employee",
         }
 
@@ -62,7 +60,6 @@ class LoginView(APIView):
 
         log_user_access_event(user, "login", request=request)
 
-        # Set HttpOnly auth cookies. Use secure cross-site cookies in production.
         try:
             secure_cookie = not settings.DEBUG
             same_site = "None" if secure_cookie else "Lax"
@@ -83,7 +80,6 @@ class LoginView(APIView):
                 path="/",
             )
         except Exception:
-            # If cookies can't be set (e.g., response type or environment), continue with JSON-only tokens
             pass
 
         return response
