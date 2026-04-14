@@ -36,19 +36,16 @@ class LoginView(APIView):
         refresh = RefreshToken.for_user(user)
         access = refresh.access_token
 
-        # Determine if user is admin
         is_staff = bool(getattr(user, "is_staff", False))
         is_superuser = bool(getattr(user, "is_superuser", False))
         is_admin = is_staff or is_superuser
         role = "admin" if is_admin else "employee"
         
-        # Build response payload
         payload = {
             "message": "Login successful",
             "access": str(access),
             "refresh": str(refresh),
             "user": UserSerializer(user).data,
-            # Top-level admin flags for convenience in frontends
             "is_staff": is_staff,
             "is_superuser": is_superuser,
             "is_admin": is_admin,

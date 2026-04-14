@@ -401,8 +401,6 @@ class TeamViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-
-# TIME ENTRY VIEWSET
 class TimeEntryViewSet(viewsets.ModelViewSet):
     queryset = TimeEntry.objects.all()
     serializer_class = TimeEntrySerializer
@@ -434,7 +432,6 @@ class TimeEntryViewSet(viewsets.ModelViewSet):
             data = TimeEntrySerializer(entry, context={'request': request}).data
             data['is_running'] = True
             return Response(data, status=status.HTTP_200_OK)
-        # Return a 200 with a stable shape so the frontend doesn't treat it as an error
         return Response({"is_running": False}, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'])
@@ -529,8 +526,6 @@ class ScreenshotViewSet(viewsets.ModelViewSet):
             project=time_entry.project,
         )
 
-
-# REPORTS VIEW
 class ReportView(APIView):
     permission_classes = [IsAuthenticated]
 
