@@ -215,7 +215,7 @@ class AdminTimeEntryListSerializer(serializers.ModelSerializer):
 class AdminScreenshotListSerializer(serializers.ModelSerializer):
     user_email = serializers.EmailField(source="user.email", read_only=True)
     username = serializers.CharField(source="user.username", read_only=True)
-    project_name = serializers.CharField(source="project.name", read_only=True, allow_null=True)
+    project_name = serializers.SerializerMethodField()
     time_entry_description = serializers.CharField(source="time_entry.description", read_only=True)
     image_url = serializers.SerializerMethodField()
 
@@ -244,6 +244,13 @@ class AdminScreenshotListSerializer(serializers.ModelSerializer):
         if request:
             return request.build_absolute_uri(obj.image.url)
         return obj.image.url
+
+    def get_project_name(self, obj):
+        if obj.time_entry and obj.time_entry.project:
+            return obj.time_entry.project.name
+        if obj.project:
+            return obj.project.name
+        return None
 
 
 # ==================== ANALYTICS SERIALIZERS ====================

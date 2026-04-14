@@ -74,3 +74,57 @@ class AdminScreenshotDeleteTests(APITestCase):
                 target_id=self.screenshot.id,
             ).exists()
         )
+
+
+@override_settings(SECURE_SSL_REDIRECT=False)
+class AdminScreenshotListTests(APITestCase):
+    def setUp(self):
+        self.temp_media = TemporaryDirectory()
+        self.override = override_settings(MEDIA_ROOT=self.temp_media.name)
+        self.override.enable()
+        self.addCleanup(self.override.disable)
+        self.addCleanup(self.temp_media.cleanup)
+
+        user_model = get_user_model()
+        self.admin = user_model.objects.create_superuser(
+            email="admin2@example.com",
+            password="secret123",
+            username="admin2",
+        )
+        self.employee = user_model.objects.create_user(
+            email="employee2@example.com",
+            password="secret123",
+            username="employee2",
+        )
+        self.client.force_authenticate(self.admin)
+
+    def test_list_uses_time_entry_project_name_when_screenshot_project_is_null(self):
+        project = Project.objects.create(
+            name="Client Delivery",
+            description="",
+            type="group",
+            creator=self.employee,
+        )
+        time_entry = TimeEntry.objects.create(
+            user=self.employee,
+            project=project,
+            description="Tracked task",
+            start_time="2026-03-21T10:00:00Z",
+            is_running=True,
+        )
+        Screenshot.objects.create(
+            user=self.employee,
+            project=None,
+            time_entry=time_entry,
+            image=SimpleUploadedFile(
+                "capture.jpg",
+                b"fake-image-bytes",
+                content_type="image/jpeg",
+            ),
+        )
+
+        response = self.client.get(reverse("admin-screenshot-list"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["results"]), 1)
+        self.assertEqual(response.data["results"][0]["project_name"], "Client Delivery")

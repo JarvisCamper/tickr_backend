@@ -403,7 +403,9 @@ class AdminScreenshotViewSet(viewsets.ModelViewSet):
     serializer_class = AdminScreenshotListSerializer
 
     def get_queryset(self):
-        queryset = Screenshot.objects.select_related("user", "project", "time_entry").order_by(
+        queryset = Screenshot.objects.select_related(
+            "user", "project", "time_entry", "time_entry__project"
+        ).order_by(
             "-captured_at"
         )
 
