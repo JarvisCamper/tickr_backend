@@ -4,7 +4,7 @@ Django settings for tickr project
 from pathlib import Path
 from decouple import config, Csv
 from datetime import timedelta
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 # Build paths
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -180,6 +180,12 @@ MEDIA_URL = '/media/'
 CLOUDINARY_URL = config('CLOUDINARY_URL', default='')
 
 if CLOUDINARY_URL:
+    cloudinary_config = urlparse(CLOUDINARY_URL)
+    CLOUDINARY_STORAGE = {
+        "CLOUD_NAME": cloudinary_config.hostname,
+        "API_KEY": unquote(cloudinary_config.username or ""),
+        "API_SECRET": unquote(cloudinary_config.password or ""),
+    }
     STORAGES = {
         "default": {"BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage"},
         "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
